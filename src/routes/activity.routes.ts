@@ -22,8 +22,15 @@ router.get("/places/autocomplete", authMiddleware, async (req, res) => {
       }
     }
     // Fallback to OSM Nominatim
-    const resp = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q as string)}`);
+    const resp = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q as string)}`, {
+      headers: {
+        "User-Agent": "LoomusApp/1.0"
+      }
+    });
     const data = await resp.json();
+    if (!Array.isArray(data)) {
+      return res.json([]);
+    }
     return res.json(data.map((p: any) => ({
       description: p.display_name,
       place_id: p.place_id
