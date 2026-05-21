@@ -12,7 +12,7 @@ router.post("/suggest", authMiddleware, async (req, res) => {
 
   try {
     const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+    const model = genAI.getGenerativeModel({ model: "gemini-flash-lite-latest" });
     const prompt = `You are an AI assistant for a social app called Loomus. 
 The user is currently looking at: ${context}. 
 The user asks: "${query}"
@@ -35,7 +35,7 @@ router.get("/hot-events", async (req, res) => {
   
   try {
     const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+    const model = genAI.getGenerativeModel({ model: "gemini-flash-lite-latest" });
     const prompt = `Generate 4 realistic "hot upcoming events" happening in Delhi in the next 2 to 14 days. Do NOT generate events happening today or right now.
 Format exactly as a JSON array of objects with the following schema:
 [
