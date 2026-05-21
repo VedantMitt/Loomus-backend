@@ -36,7 +36,29 @@ router.get("/hot-events", async (req, res) => {
   try {
     const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
     const model = genAI.getGenerativeModel({ model: "gemini-flash-lite-latest" });
-    const prompt = `Generate 4 realistic "hot upcoming events" happening in Delhi in the next 2 to 14 days. Do NOT generate events happening today or right now.
+    const today = new Date();
+    
+    // Fetch real-time web context using DuckDuckGo HTML search
+    let webContext = "";
+    try {
+      const res = await fetch('https://html.duckduckgo.com/html/?q=events+in+delhi+this+weekend+bookmyshow+district.in', {
+        headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; rv:102.0)' }
+      });
+      const text = await res.text();
+      const matches = text.match(/<a class="result__snippet[^>]*>(.*?)<\/a>/g);
+      if (matches) {
+        webContext = matches.map(m => m.replace(/<[^>]+>/g, '')).join('\\n');
+      }
+    } catch(err) {
+      console.error("DDG Search failed", err);
+    }
+
+    const prompt = `The current date is ${today.toDateString()}. 
+Here is real-time search data for Delhi events: 
+${webContext}
+
+Generate 4 realistic "hot upcoming events" happening in Delhi in the next 2 to 14 days (in ${today.getFullYear()}). 
+Use the search data above if possible. Do NOT generate events from the past (like 2024). 
 Format exactly as a JSON array of objects with the following schema:
 [
   {
