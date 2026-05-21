@@ -62,11 +62,11 @@ router.get("/", authMiddleware, async (req: any, res) => {
 
     // Time-based status filter
     if (status === "live") {
-      conditions.push(`a.date <= NOW() AND (a.submission_deadline IS NULL OR a.submission_deadline >= NOW())`);
+      conditions.push(`a.date <= NOW() AND (a.end_date IS NULL OR a.end_date >= NOW()) AND (a.submission_deadline IS NULL OR a.submission_deadline >= NOW())`);
     } else if (status === "upcoming") {
       conditions.push(`a.date > NOW()`);
     } else if (status === "past" || status === "expired") {
-      conditions.push(`(a.submission_deadline IS NOT NULL AND a.submission_deadline < NOW()) OR (a.submission_deadline IS NULL AND a.date < NOW() - INTERVAL '24 hours')`);
+      conditions.push(`(a.end_date IS NOT NULL AND a.end_date < NOW()) OR (a.end_date IS NULL AND a.date < NOW() - INTERVAL '24 hours') OR (a.submission_deadline IS NOT NULL AND a.submission_deadline < NOW())`);
     }
 
     // City filter (match against location)

@@ -338,6 +338,8 @@ export const runMigrations = async () => {
     await client.query(`ALTER TABLE activities ADD COLUMN IF NOT EXISTS is_shared BOOLEAN DEFAULT FALSE`);
     await client.query(`ALTER TABLE activities ADD COLUMN IF NOT EXISTS shared_at TIMESTAMP`);
     await client.query(`ALTER TABLE activities ADD COLUMN IF NOT EXISTS shared_caption TEXT`);
+    await client.query(`ALTER TABLE activities ADD COLUMN IF NOT EXISTS end_date TIMESTAMP`);
+    await client.query(`ALTER TABLE activities ADD COLUMN IF NOT EXISTS itinerary JSONB DEFAULT '[]'`);
     console.log("✅ Activity Feed columns verified");
   
     // 6. Activity Announcements & Moderators
