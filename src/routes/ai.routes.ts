@@ -36,14 +36,14 @@ router.get("/hot-events", async (req, res) => {
   try {
     const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
     const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
-    const prompt = `Generate 4 realistic "hot upcoming events" happening in the next 2 to 14 days in Delhi. Do NOT generate events happening today.
+    const prompt = `Generate 4 realistic "hot upcoming events" happening in Delhi in the next 2 to 14 days. Do NOT generate events happening today or right now.
 Format exactly as a JSON array of objects with the following schema:
 [
   {
     "id": "string",
     "title": "string",
     "location": "string",
-    "time": "string (e.g., 'This Friday, 8:00 PM', 'In 3 Days', or 'May 25th')",
+    "time": "string (e.g., 'May 28th, 8:00 PM' or 'In 5 days')",
     "type": "string (e.g., 'Concert', 'Comedy')",
     "image": "string (Unsplash image URL related to the event type, use source.unsplash.com or images.unsplash.com)",
     "gradient": "string (RGBA color string like 'rgba(255, 65, 108, 0.4)')"
