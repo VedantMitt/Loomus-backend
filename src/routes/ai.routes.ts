@@ -28,4 +28,39 @@ Give a very concise, friendly, and helpful suggestion (max 2 sentences).`;
   }
 });
 
+router.get("/hot-events", async (req, res) => {
+  if (!process.env.GEMINI_API_KEY) {
+    return res.status(500).json({ error: "GEMINI_API_KEY not configured" });
+  }
+  
+  try {
+    const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+    const prompt = `Generate 4 realistic "hot live events" happening right now or soon in Delhi.
+Format exactly as a JSON array of objects with the following schema:
+[
+  {
+    "id": "string",
+    "title": "string",
+    "location": "string",
+    "time": "string (e.g., 'Live Now' or 'Starting in 30 mins' or '8:00 PM')",
+    "type": "string (e.g., 'Concert', 'Comedy')",
+    "image": "string (Unsplash image URL related to the event type, use source.unsplash.com or images.unsplash.com)",
+    "gradient": "string (RGBA color string like 'rgba(255, 65, 108, 0.4)')"
+  }
+]
+Return ONLY the raw JSON array. Do not include markdown formatting like \`\`\`json.`;
+
+    const result = await model.generateContent(prompt);
+    let text = result.response.text().trim();
+    if (text.startsWith("\`\`\`json")) text = text.replace(/\`\`\`json/g, "").replace(/\`\`\`/g, "").trim();
+    if (text.startsWith("\`\`\`")) text = text.replace(/\`\`\`/g, "").trim();
+    
+    res.json(JSON.parse(text));
+  } catch (error) {
+    console.error("AI HOT EVENTS ERROR:", error);
+    res.status(500).json({ error: "Failed to generate hot events" });
+  }
+});
+
 export default router;
