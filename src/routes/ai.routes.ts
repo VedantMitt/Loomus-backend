@@ -3,8 +3,6 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 import { authMiddleware } from "../middleware/auth.middleware";
 
 const router = express.Router();
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "dummy_key");
-
 router.post("/suggest", authMiddleware, async (req, res) => {
   const { context, query } = req.body;
   
@@ -13,6 +11,7 @@ router.post("/suggest", authMiddleware, async (req, res) => {
   }
 
   try {
+    const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
     const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
     const prompt = `You are an AI assistant for a social app called Loomus. 
 The user is currently looking at: ${context}. 
