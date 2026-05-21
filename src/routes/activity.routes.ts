@@ -5,6 +5,36 @@ import { authMiddleware } from "../middleware/auth.middleware";
 const router = Router();
 
 // ─────────────────────────────────────────────
+// GET /activities/places/autocomplete — location suggestions
+// ─────────────────────────────────────────────
+router.get("/places/autocomplete", authMiddleware, async (req, res) => {
+  const { q } = req.query;
+  if (!q) return res.json([]);
+  try {
+    if (process.env.GOOGLE_MAPS_API_KEY) {
+      const resp = await fetch(`https://maps.googleapis.com/maps/api/place/autocomplete/json?input=${encodeURIComponent(q as string)}&key=${process.env.GOOGLE_MAPS_API_KEY}`);
+      const data = await resp.json();
+      if (data.predictions) {
+        return res.json(data.predictions.map((p: any) => ({
+          description: p.description,
+          place_id: p.place_id
+        })));
+      }
+    }
+    // Fallback to OSM Nominatim
+    const resp = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q as string)}`);
+    const data = await resp.json();
+    return res.json(data.map((p: any) => ({
+      description: p.display_name,
+      place_id: p.place_id
+    })));
+  } catch (err) {
+    console.error("PLACES AUTOCOMPLETE ERROR:", err);
+    res.status(500).json({ error: "Failed to fetch places" });
+  }
+});
+
+// ─────────────────────────────────────────────
 // GET /activities — list with filters, search, tabs
 // ─────────────────────────────────────────────
 router.get("/", authMiddleware, async (req: any, res) => {

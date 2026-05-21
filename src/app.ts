@@ -13,6 +13,7 @@ import notificationsRoutes from "./routes/notifications.routes";
 import chatRoutes from "./routes/chat.routes";
 import roomsRoutes from "./routes/rooms.routes";
 import playRoutes from "./routes/play.routes";
+import aiRoutes from "./routes/ai.routes";
 
 const app = express();
 
@@ -80,6 +81,7 @@ app.use("/notifications", notificationsRoutes);
 app.use("/chat", chatRoutes);
 app.use("/rooms", roomsRoutes);
 app.use("/play", playRoutes);
+app.use("/ai", aiRoutes);
 
 // ─── Global Error Handler (must be last) ─────────────
 app.use((err: any, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
