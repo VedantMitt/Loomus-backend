@@ -12,7 +12,7 @@ router.post("/suggest", authMiddleware, async (req, res) => {
 
   try {
     const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+    const model = genAI.getGenerativeModel({ model: "gemini-pro" });
     const prompt = `You are an AI assistant for a social app called Loomus. 
 The user is currently looking at: ${context}. 
 The user asks: "${query}"
