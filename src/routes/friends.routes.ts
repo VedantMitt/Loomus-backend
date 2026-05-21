@@ -192,7 +192,14 @@ router.get("/", authMiddleware, async (req: AuthRequest, res) => {
             FROM activities a
             JOIN activity_members am ON am.activity_id = a.id
             WHERE am.user_id = u.id AND a.deleted_at IS NULL AND a.date > NOW() - INTERVAL '12 hours'
-          ) as active_activities
+          ) as active_activities,
+          (
+            SELECT json_agg(json_build_object('id', a.id, 'title', a.title))
+            FROM activities a
+            JOIN activity_members am1 ON am1.activity_id = a.id
+            JOIN activity_members am2 ON am2.activity_id = a.id
+            WHERE am1.user_id = u.id AND am2.user_id = $1 AND a.deleted_at IS NULL
+          ) as shared_chapters
         FROM friends f
         JOIN users u ON (f.user_id1 = u.id OR f.user_id2 = u.id)
         WHERE (f.user_id1 = $1 OR f.user_id2 = $1)

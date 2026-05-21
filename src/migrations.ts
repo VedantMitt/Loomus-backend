@@ -329,6 +329,16 @@ export const runMigrations = async () => {
     // 5. User Privacy
     await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS is_invisible BOOLEAN DEFAULT FALSE`);
     console.log("✅ User privacy columns verified");
+
+    // 5b. Activity Feed columns
+    await client.query(`ALTER TABLE activities ADD COLUMN IF NOT EXISTS mood TEXT[] DEFAULT '{}'`);
+    await client.query(`ALTER TABLE activities ADD COLUMN IF NOT EXISTS budget_range TEXT DEFAULT 'free'`);
+    await client.query(`ALTER TABLE activities ADD COLUMN IF NOT EXISTS area TEXT`);
+    await client.query(`ALTER TABLE activities ADD COLUMN IF NOT EXISTS category TEXT`);
+    await client.query(`ALTER TABLE activities ADD COLUMN IF NOT EXISTS is_shared BOOLEAN DEFAULT FALSE`);
+    await client.query(`ALTER TABLE activities ADD COLUMN IF NOT EXISTS shared_at TIMESTAMP`);
+    await client.query(`ALTER TABLE activities ADD COLUMN IF NOT EXISTS shared_caption TEXT`);
+    console.log("✅ Activity Feed columns verified");
   
     // 6. Activity Announcements & Moderators
     await client.query(`
@@ -347,6 +357,34 @@ export const runMigrations = async () => {
       );
     `);
     console.log("✅ Activity Social tables verified");
+
+    // 7. Activity Polls
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS activity_polls (
+        id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+        activity_id UUID REFERENCES activities(id) ON DELETE CASCADE,
+        creator_id UUID REFERENCES users(id) ON DELETE CASCADE,
+        question TEXT NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE TABLE IF NOT EXISTS activity_poll_options (
+        id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+        poll_id UUID REFERENCES activity_polls(id) ON DELETE CASCADE,
+        option_text TEXT NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE TABLE IF NOT EXISTS activity_poll_votes (
+        id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+        poll_id UUID REFERENCES activity_polls(id) ON DELETE CASCADE,
+        option_id UUID REFERENCES activity_poll_options(id) ON DELETE CASCADE,
+        user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(poll_id, user_id)
+      );
+    `);
+    console.log("✅ Activity Poll tables verified");
 
     await client.query("COMMIT");
     console.log("✨ All migrations completed successfully");

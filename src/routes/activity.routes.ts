@@ -9,7 +9,7 @@ const router = Router();
 // ─────────────────────────────────────────────
 router.get("/", authMiddleware, async (req: any, res) => {
   const userId = req.user.id;
-  const { type, status, search, tab, city, mode, is_free, college } = req.query;
+  const { type, status, search, tab, city, mode, is_free, college, mood, budget, area, category } = req.query;
 
   try {
     let conditions = ["a.deleted_at IS NULL"];
@@ -58,6 +58,34 @@ router.get("/", authMiddleware, async (req: any, res) => {
       conditions.push(`(a.is_free = TRUE OR a.price = 0 OR a.price IS NULL)`);
     } else if (is_free === "false") {
       conditions.push(`a.is_free = FALSE AND a.price > 0`);
+    }
+
+    // Mood filter (array contains)
+    if (mood) {
+      conditions.push(`$${paramIdx} = ANY(a.mood)`);
+      params.push(mood);
+      paramIdx++;
+    }
+
+    // Budget range filter
+    if (budget && budget !== "all") {
+      conditions.push(`a.budget_range = $${paramIdx}`);
+      params.push(budget);
+      paramIdx++;
+    }
+
+    // Area filter
+    if (area) {
+      conditions.push(`LOWER(a.area) LIKE LOWER($${paramIdx})`);
+      params.push(`%${area}%`);
+      paramIdx++;
+    }
+
+    // Category filter (more specific than type)
+    if (category && category !== "all") {
+      conditions.push(`LOWER(a.category) = LOWER($${paramIdx})`);
+      params.push(category);
+      paramIdx++;
     }
 
     // Search
@@ -149,6 +177,66 @@ router.get("/top", authMiddleware, async (req: any, res) => {
 });
 
 // ─────────────────────────────────────────────
+// GET /activities/feed/shared — feed of friends' shared scrapbooks
+// ─────────────────────────────────────────────
+router.get("/feed/shared", authMiddleware, async (req: any, res) => {
+  const userId = req.user.id;
+  try {
+    const { rows } = await pool.query(`
+      SELECT a.*, 
+        u.name AS host_name, u.username AS host_username, u.profile_pic AS host_pic,
+        (SELECT json_agg(json_build_object('url', s.content_url, 'desc', s.description, 'author_name', u2.name, 'author_pic', u2.profile_pic))
+         FROM submissions s JOIN users u2 ON u2.id = s.user_id WHERE s.activity_id = a.id) as timeline_photos,
+        (SELECT COUNT(*) FROM activity_members am2 WHERE am2.activity_id = a.id) as member_count
+      FROM activities a
+      JOIN users u ON u.id = a.host_id
+      WHERE a.is_shared = TRUE AND a.deleted_at IS NULL
+        AND EXISTS (
+          SELECT 1 FROM activity_members am 
+          JOIN friends f ON (f.user_id1 = am.user_id OR f.user_id2 = am.user_id)
+          WHERE am.activity_id = a.id AND am.user_id != $1
+          AND (f.user_id1 = $1 OR f.user_id2 = $1)
+          AND f.status = 'accepted'
+        )
+      ORDER BY a.shared_at DESC NULLS LAST
+      LIMIT 20
+    `, [userId]);
+    res.json(rows);
+  } catch (err) {
+    console.error("SHARED FEED ERROR:", err);
+    res.status(500).json({ error: "Failed to fetch shared scrapbooks" });
+  }
+});
+
+// ─────────────────────────────────────────────
+// POST /activities/:id/share — share scrapbook to feed
+// ─────────────────────────────────────────────
+router.post("/:id/share", authMiddleware, async (req: any, res) => {
+  const activityId = req.params.id;
+  const userId = req.user.id;
+  const { caption } = req.body || {};
+
+  try {
+    // Allow host or members to share
+    const memberCheck = await pool.query(`
+      SELECT 1 FROM activity_members WHERE activity_id = $1 AND user_id = $2
+      UNION
+      SELECT 1 FROM activities WHERE id = $1 AND host_id = $2
+    `, [activityId, userId]);
+    if (memberCheck.rowCount === 0) return res.status(403).json({ error: "Not authorized to share" });
+
+    await pool.query(
+      `UPDATE activities SET is_shared = TRUE, shared_at = NOW(), shared_caption = COALESCE($2, shared_caption) WHERE id = $1`,
+      [activityId, caption || null]
+    );
+    res.json({ message: "Scrapbook shared to feed!" });
+  } catch (err) {
+    console.error("SHARE SCRAPBOOK ERROR:", err);
+    res.status(500).json({ error: "Failed to share scrapbook" });
+  }
+});
+
+// ─────────────────────────────────────────────
 // POST /activities — create new activity
 // ─────────────────────────────────────────────
 router.post("/", authMiddleware, async (req: any, res) => {
@@ -157,7 +245,8 @@ router.post("/", authMiddleware, async (req: any, res) => {
     title, type, date, location, description, banner, mode, 
     max_participants, join_deadline, submission_deadline, 
     allow_submissions, format, social_links, price, is_free,
-    is_official, hosted_by_name, college_name, society_name
+    is_official, hosted_by_name, college_name, society_name,
+    mood, budget_range, area, category
   } = req.body;
 
   if (!title || !type || !date || !location) {
@@ -170,9 +259,10 @@ router.post("/", authMiddleware, async (req: any, res) => {
         title, type, date, location, description, banner, mode, host_id, 
         max_participants, join_deadline, submission_deadline, allow_submissions, 
         format, social_links, price, is_free,
-        is_official, hosted_by_name, college_name, society_name
+        is_official, hosted_by_name, college_name, society_name,
+        mood, budget_range, area, category
       )
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24)
        RETURNING *`,
       [
         title, type, date, location, description || null, banner || null, mode || null, userId, 
@@ -180,7 +270,8 @@ router.post("/", authMiddleware, async (req: any, res) => {
         allow_submissions === undefined ? true : allow_submissions, format || 'Event', 
         JSON.stringify(social_links || []), price || 0, is_free !== undefined ? is_free : true,
         is_official === undefined ? false : is_official,
-        hosted_by_name || null, college_name || null, society_name || null
+        hosted_by_name || null, college_name || null, society_name || null,
+        mood || '{}', budget_range || 'free', area || null, category || null
       ]
     );
 
@@ -423,7 +514,7 @@ router.post("/:id/invite", authMiddleware, async (req: any, res) => {
     // Check they're friends
     const friendCheck = await pool.query(
       `SELECT 1 FROM friends WHERE status = 'accepted' AND
-       ((user_id = $1 AND friend_id = $2) OR (user_id = $2 AND friend_id = $1))`,
+       ((user_id1 = $1 AND user_id2 = $2) OR (user_id1 = $2 AND user_id2 = $1))`,
       [inviterId, invitee_id]
     );
 
@@ -509,10 +600,14 @@ router.post("/:id/submit", authMiddleware, async (req: any, res) => {
     }
 
     const { rows } = await pool.query(
-      `INSERT INTO submissions (activity_id, user_id, content_url, description)
-       VALUES ($1, $2, $3, $4)
-       ON CONFLICT (activity_id, user_id) DO UPDATE SET content_url = EXCLUDED.content_url, description = EXCLUDED.description
-       RETURNING *`,
+      `WITH inserted AS (
+         INSERT INTO submissions (activity_id, user_id, content_url, description)
+         VALUES ($1, $2, $3, $4)
+         RETURNING *
+       )
+       SELECT u.*, u2.name, u2.username, u2.profile_pic 
+       FROM inserted u
+       JOIN users u2 ON u2.id = u.user_id`,
       [activityId, userId, content_url, description]
     );
 
@@ -557,7 +652,7 @@ router.put("/:id", authMiddleware, async (req: any, res) => {
     max_participants, join_deadline, submission_deadline, 
     allow_submissions, format, social_links,
     is_official, hosted_by_name, college_name, society_name,
-    is_free, price
+    is_free, price, end_date, itinerary
   } = req.body;
 
   try {
@@ -586,8 +681,10 @@ router.put("/:id", authMiddleware, async (req: any, res) => {
         college_name = COALESCE($16, college_name),
         society_name = COALESCE($17, society_name),
         is_free = COALESCE($18, is_free),
-        price = COALESCE($19, price)
-       WHERE id = $20
+        price = COALESCE($19, price),
+        end_date = $20,
+        itinerary = COALESCE($21, itinerary)
+       WHERE id = $22
        RETURNING *`,
       [
         title, type, date, location, description, banner, mode, 
@@ -595,9 +692,23 @@ router.put("/:id", authMiddleware, async (req: any, res) => {
         allow_submissions, format, social_links ? JSON.stringify(social_links) : null,
         is_official, hosted_by_name, college_name, society_name,
         is_free, price,
+        end_date || null,
+        itinerary ? JSON.stringify(itinerary) : null,
         activityId
       ]
     );
+
+    // Notify members
+    const userQuery = await pool.query(`SELECT name FROM users WHERE id = $1`, [userId]);
+    const userName = userQuery.rows[0]?.name || 'Host';
+    const members = await pool.query(`SELECT user_id FROM activity_members WHERE activity_id = $1 AND user_id != $2`, [activityId, userId]);
+    
+    for (let m of members.rows) {
+      await pool.query(
+        `INSERT INTO notifications (user_id, sender_id, type, metadata) VALUES ($1, $2, 'activity_edit', $3)`,
+        [m.user_id, userId, JSON.stringify({ activity_id: activityId, message: `${userName} edited the plan: ${title || rows[0].title}` })]
+      );
+    }
 
     res.json(rows[0]);
   } catch (err) {

@@ -14,8 +14,8 @@ process.on("uncaughtException", (err) => {
 });
 
 process.on("unhandledRejection", (err) => {
-  console.error("💥 UNHANDLED REJECTION! Shutting down...", err);
-  process.exit(1);
+  console.error("⚠️ UNHANDLED REJECTION (not crashing):", err);
+  // Don't process.exit — log, monitor, and keep serving.
 });
 
 async function startServer() {
@@ -137,8 +137,28 @@ async function startServer() {
 
       socket.on("disconnect", () => {
         console.log("Client disconnected:", socket.id);
+        // Clean up room states for rooms this socket was in
+        for (const [roomId] of activeRoomStates) {
+          const room = io.sockets.adapter.rooms.get(`media_${roomId}`);
+          if (!room || room.size === 0) {
+            activeRoomStates.delete(roomId);
+          }
+        }
       });
     });
+
+    // Periodic cleanup of stale room states (every 30 min)
+    setInterval(() => {
+      let cleaned = 0;
+      for (const [roomId] of activeRoomStates) {
+        const room = io.sockets.adapter.rooms.get(`media_${roomId}`);
+        if (!room || room.size === 0) {
+          activeRoomStates.delete(roomId);
+          cleaned++;
+        }
+      }
+      if (cleaned > 0) console.log(`🧹 Cleaned ${cleaned} stale room states`);
+    }, 30 * 60 * 1000);
 
     // 5. Finally, Listen
     httpServer.listen(PORT, "0.0.0.0", () => {

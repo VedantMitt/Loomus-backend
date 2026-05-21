@@ -81,4 +81,13 @@ app.use("/chat", chatRoutes);
 app.use("/rooms", roomsRoutes);
 app.use("/play", playRoutes);
 
+// ─── Global Error Handler (must be last) ─────────────
+app.use((err: any, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+  console.error("🔥 UNHANDLED ROUTE ERROR:", err);
+  const status = err.status || err.statusCode || 500;
+  res.status(status).json({ 
+    error: err.message || "Internal server error" 
+  });
+});
+
 export default app;

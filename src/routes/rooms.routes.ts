@@ -22,10 +22,34 @@ router.get("/", authMiddleware, async (req: AuthRequest, res: Response) => {
   }
 });
 
+// ─── GET TOP ROOMS (for discover page) ─────────────────────────
+router.get("/top", authMiddleware, async (req: AuthRequest, res: Response) => {
+  try {
+    const { rows } = await pool.query(`
+      SELECT r.*, u.username as host_username, u.name as host_name, u.profile_pic as host_profile_pic,
+        (SELECT COUNT(*) FROM room_members rm WHERE rm.room_id = r.id) as member_count
+      FROM rooms r
+      JOIN users u ON u.id = r.host_id
+      ORDER BY member_count DESC, r.created_at DESC
+      LIMIT 10
+    `);
+    res.json(rows);
+  } catch (err) {
+    console.error("Top Rooms error:", err);
+    res.status(500).json({ error: "Failed to fetch top rooms" });
+  }
+});
+
 // ─── GET SINGLE ROOM ───────────────────────────────────────────
 router.get("/:id", authMiddleware, async (req: AuthRequest, res: Response) => {
   try {
     const { id } = req.params;
+    // Validate UUID format to prevent DB errors
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!uuidRegex.test(id)) {
+      return res.status(400).json({ error: "Invalid room ID format" });
+    }
+
     const result = await pool.query(`
       SELECT r.*, u.username as host_username, u.name as host_name, u.profile_pic as host_profile_pic 
       FROM rooms r
