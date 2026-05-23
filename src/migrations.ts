@@ -138,6 +138,14 @@ export const runMigrations = async () => {
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
 
+      CREATE TABLE IF NOT EXISTS activity_likes (
+        id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+        activity_id UUID REFERENCES activities(id) ON DELETE CASCADE,
+        user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(activity_id, user_id)
+      );
+
       CREATE TABLE IF NOT EXISTS activity_invites (
         id SERIAL PRIMARY KEY,
         activity_id UUID REFERENCES activities(id) ON DELETE CASCADE,

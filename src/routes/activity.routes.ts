@@ -224,7 +224,10 @@ router.get("/feed/shared", authMiddleware, async (req: any, res) => {
         u.name AS host_name, u.username AS host_username, u.profile_pic AS host_pic,
         (SELECT json_agg(json_build_object('url', s.content_url, 'desc', s.description, 'author_name', u2.name, 'author_pic', u2.profile_pic))
          FROM submissions s JOIN users u2 ON u2.id = s.user_id WHERE s.activity_id = a.id) as timeline_photos,
-        (SELECT COUNT(*) FROM activity_members am2 WHERE am2.activity_id = a.id) as member_count
+        (SELECT COUNT(*) FROM activity_members am2 WHERE am2.activity_id = a.id) as member_count,
+        (SELECT COUNT(*) FROM activity_likes al WHERE al.activity_id = a.id) as likes_count,
+        EXISTS(SELECT 1 FROM activity_likes al WHERE al.activity_id = a.id AND al.user_id = $1) as has_liked,
+        (SELECT COUNT(*) FROM activity_comments ac WHERE ac.activity_id = a.id) as comment_count
       FROM activities a
       JOIN users u ON u.id = a.host_id
       WHERE a.is_shared = TRUE AND a.deleted_at IS NULL
@@ -270,6 +273,33 @@ router.post("/:id/share", authMiddleware, async (req: any, res) => {
   } catch (err) {
     console.error("SHARE SCRAPBOOK ERROR:", err);
     res.status(500).json({ error: "Failed to share scrapbook" });
+  }
+});
+
+// ─────────────────────────────────────────────
+// POST /activities/:id/unshare — remove scrapbook from feed
+// ─────────────────────────────────────────────
+router.post("/:id/unshare", authMiddleware, async (req: any, res) => {
+  const activityId = req.params.id;
+  const userId = req.user.id;
+
+  try {
+    // Allow host or members to unshare
+    const memberCheck = await pool.query(`
+      SELECT 1 FROM activity_members WHERE activity_id = $1 AND user_id = $2
+      UNION
+      SELECT 1 FROM activities WHERE id = $1 AND host_id = $2
+    `, [activityId, userId]);
+    if (memberCheck.rowCount === 0) return res.status(403).json({ error: "Not authorized to unshare" });
+
+    await pool.query(
+      `UPDATE activities SET is_shared = FALSE, shared_caption = NULL WHERE id = $1`,
+      [activityId]
+    );
+    res.json({ message: "Scrapbook removed from feed!" });
+  } catch (err) {
+    console.error("UNSHARE SCRAPBOOK ERROR:", err);
+    res.status(500).json({ error: "Failed to unshare scrapbook" });
   }
 });
 
@@ -532,6 +562,35 @@ router.post("/:id/comments", authMiddleware, async (req: any, res) => {
   } catch (err) {
     console.error("POST COMMENT ERROR:", err);
     res.status(500).json({ error: "Failed to post comment" });
+  }
+});
+
+// ─────────────────────────────────────────────
+// POST /activities/:id/like — toggle like
+// ─────────────────────────────────────────────
+router.post("/:id/like", authMiddleware, async (req: any, res) => {
+  const activityId = req.params.id;
+  const userId = req.user.id;
+
+  try {
+    const existing = await pool.query(
+      `SELECT id FROM activity_likes WHERE activity_id = $1 AND user_id = $2`,
+      [activityId, userId]
+    );
+
+    if (existing.rowCount > 0) {
+      await pool.query(`DELETE FROM activity_likes WHERE id = $1`, [existing.rows[0].id]);
+      return res.json({ liked: false });
+    } else {
+      await pool.query(
+        `INSERT INTO activity_likes (activity_id, user_id) VALUES ($1, $2)`,
+        [activityId, userId]
+      );
+      return res.json({ liked: true });
+    }
+  } catch (err) {
+    console.error("POST LIKE ERROR:", err);
+    res.status(500).json({ error: "Failed to toggle like" });
   }
 });
 
