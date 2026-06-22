@@ -46,12 +46,16 @@ router.get("/places/autocomplete", authMiddleware, async (req, res) => {
 // ─────────────────────────────────────────────
 router.get("/", authMiddleware, async (req: any, res) => {
   const userId = req.user.id;
-  const { type, status, search, tab, city, mode, is_free, college, mood, budget, area, category } = req.query;
+  const { type, status, search, tab, city, mode, is_free, college, mood, budget, area, category, is_public } = req.query;
 
   try {
     let conditions = ["a.deleted_at IS NULL"];
     let params: any[] = [userId];
     let paramIdx = 2;
+
+    if (is_public === "true") {
+      conditions.push(`a.is_public = TRUE`);
+    }
 
     // Category filter
     if (type && type !== "all") {
@@ -224,6 +228,8 @@ router.get("/feed/shared", authMiddleware, async (req: any, res) => {
         u.name AS host_name, u.username AS host_username, u.profile_pic AS host_pic,
         (SELECT json_agg(json_build_object('url', s.content_url, 'desc', s.description, 'author_name', u2.name, 'author_pic', u2.profile_pic))
          FROM submissions s JOIN users u2 ON u2.id = s.user_id WHERE s.activity_id = a.id) as timeline_photos,
+        (SELECT json_agg(json_build_object('name', u3.name, 'profile_pic', u3.profile_pic))
+         FROM activity_members am3 JOIN users u3 ON u3.id = am3.user_id WHERE am3.activity_id = a.id) as participant_previews,
         (SELECT COUNT(*) FROM activity_members am2 WHERE am2.activity_id = a.id) as member_count,
         (SELECT COUNT(*) FROM activity_likes al WHERE al.activity_id = a.id) as likes_count,
         EXISTS(SELECT 1 FROM activity_likes al WHERE al.activity_id = a.id AND al.user_id = $1) as has_liked,
@@ -313,7 +319,7 @@ router.post("/", authMiddleware, async (req: any, res) => {
     max_participants, join_deadline, submission_deadline, 
     allow_submissions, format, social_links, price, is_free,
     is_official, hosted_by_name, college_name, society_name,
-    mood, budget_range, area, category
+    mood, budget_range, area, category, is_public
   } = req.body;
 
   if (!title || !type || !date || !location) {
@@ -327,9 +333,9 @@ router.post("/", authMiddleware, async (req: any, res) => {
         max_participants, join_deadline, submission_deadline, allow_submissions, 
         format, social_links, price, is_free,
         is_official, hosted_by_name, college_name, society_name,
-        mood, budget_range, area, category
+        mood, budget_range, area, category, is_public
       )
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25)
        RETURNING *`,
       [
         title, type, date, location, description || null, banner || null, mode || null, userId, 
@@ -338,7 +344,8 @@ router.post("/", authMiddleware, async (req: any, res) => {
         JSON.stringify(social_links || []), price || 0, is_free !== undefined ? is_free : true,
         is_official === undefined ? false : is_official,
         hosted_by_name || null, college_name || null, society_name || null,
-        mood || '{}', budget_range || 'free', area || null, category || null
+        mood || '{}', budget_range || 'free', area || null, category || null,
+        is_public === undefined ? false : is_public
       ]
     );
 
@@ -748,7 +755,7 @@ router.put("/:id", authMiddleware, async (req: any, res) => {
     max_participants, join_deadline, submission_deadline, 
     allow_submissions, format, social_links,
     is_official, hosted_by_name, college_name, society_name,
-    is_free, price, end_date, itinerary
+    is_free, price, end_date, itinerary, is_public
   } = req.body;
 
   try {
@@ -779,8 +786,9 @@ router.put("/:id", authMiddleware, async (req: any, res) => {
         is_free = COALESCE($18, is_free),
         price = COALESCE($19, price),
         end_date = $20,
-        itinerary = COALESCE($21, itinerary)
-       WHERE id = $22
+        itinerary = COALESCE($21, itinerary),
+        is_public = COALESCE($22, is_public)
+       WHERE id = $23
        RETURNING *`,
       [
         title, type, date, location, description, banner, mode, 
@@ -790,6 +798,7 @@ router.put("/:id", authMiddleware, async (req: any, res) => {
         is_free, price,
         end_date || null,
         itinerary ? JSON.stringify(itinerary) : null,
+        is_public,
         activityId
       ]
     );

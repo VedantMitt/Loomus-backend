@@ -348,6 +348,7 @@ export const runMigrations = async () => {
     await client.query(`ALTER TABLE activities ADD COLUMN IF NOT EXISTS shared_caption TEXT`);
     await client.query(`ALTER TABLE activities ADD COLUMN IF NOT EXISTS end_date TIMESTAMP`);
     await client.query(`ALTER TABLE activities ADD COLUMN IF NOT EXISTS itinerary JSONB DEFAULT '[]'`);
+    await client.query(`ALTER TABLE activities ADD COLUMN IF NOT EXISTS is_public BOOLEAN DEFAULT FALSE`);
     console.log("✅ Activity Feed columns verified");
   
     // 6. Activity Announcements & Moderators
