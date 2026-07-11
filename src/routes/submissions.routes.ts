@@ -105,6 +105,8 @@ router.delete("/:id", authMiddleware, async (req, res) => {
       return res.status(403).json({ error: "Cannot delete someone else's submission" });
     }
 
+    // Delete associated votes first to avoid foreign key constraints
+    await pool.query("DELETE FROM votes WHERE submission_id = $1", [submissionId]);
     await pool.query("DELETE FROM submissions WHERE id = $1", [submissionId]);
 
     res.json({ message: "Submission deleted successfully" });
