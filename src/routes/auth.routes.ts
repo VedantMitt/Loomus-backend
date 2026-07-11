@@ -51,12 +51,7 @@ router.post("/google", async (req, res) => {
     const { email, name, picture } = payload;
     const cleanEmail = email.toLowerCase().trim();
 
-    // Check if it's a student email
-    if (!isCollegeEmail(cleanEmail)) {
-      return res.status(400).json({ 
-        error: "Only student emails are allowed (.edu, .ac.in, etc.). Please use your institutional account." 
-      });
-    }
+    // Allow all emails
 
     // Check if user already exists
     const result = await pool.query(
@@ -72,12 +67,13 @@ router.post("/google", async (req, res) => {
     } else {
       // Create a skeleton user for social login
       const college = cleanEmail.split("@")[1].split(".")[0].toUpperCase();
+      const tmpUsername = `user_${Date.now()}${Math.floor(Math.random()*1000)}`;
 
       const insertResult = await pool.query(
-        `INSERT INTO users (name, email, profile_pic, college, is_verified, is_external)
-         VALUES ($1, $2, $3, $4, TRUE, FALSE)
+        `INSERT INTO users (name, email, username, profile_pic, college, is_verified, is_external)
+         VALUES ($1, $2, $3, $4, $5, TRUE, FALSE)
          RETURNING id, name, email, username, college, year, profile_pic`,
-        [name, cleanEmail, picture, college]
+        [name, cleanEmail, tmpUsername, picture, college]
       );
       user = insertResult.rows[0];
       isNewUser = true;
@@ -90,8 +86,8 @@ router.post("/google", async (req, res) => {
       { expiresIn: "7d" }
     );
 
-    // If username or year is missing, tell the frontend to prompt for details
-    const needsCompletion = !user.username || !user.year;
+    // If username is auto-generated or year is missing, tell the frontend to prompt for details
+    const needsCompletion = !user.username || user.username.startsWith("user_") || !user.year;
 
     res.json({ 
       token, 
@@ -101,15 +97,15 @@ router.post("/google", async (req, res) => {
     });
   } catch (err: any) {
     console.error("GOOGLE AUTH ERROR:", err.message);
-    res.status(500).json({ error: "Google Authentication failed" });
+    res.status(500).json({ error: `Google Auth Error: ${err.message}` });
   }
 });
 
 // ─── COMPLETE REGISTRATION ──────────────────────────
 router.post("/complete-registration", async (req, res) => {
-  const { userId, username, year } = req.body;
+  const { userId, username } = req.body;
 
-  if (!userId || !username || !year) {
+  if (!userId || !username) {
     return res.status(400).json({ error: "All fields required" });
   }
 
@@ -127,8 +123,8 @@ router.post("/complete-registration", async (req, res) => {
     }
 
     const result = await pool.query(
-      "UPDATE users SET username = $1, year = $2 WHERE id = $3 RETURNING id, name, email, username, college, year, profile_pic",
-      [cleanUsername, year, userId]
+      "UPDATE users SET username = $1 WHERE id = $2 RETURNING id, name, email, username, college, year, profile_pic",
+      [cleanUsername, userId]
     );
 
     if (result.rows.length === 0) {
@@ -144,7 +140,7 @@ router.post("/complete-registration", async (req, res) => {
       { expiresIn: "7d" }
     );
 
-    res.json({ message: "Registration completed", token, user });
+    res.json({ token, user, isNewUser: false });
   } catch (err: any) {
     console.error("COMPLETE REGISTRATION ERROR:", err.message);
     res.status(500).json({ error: "Failed to complete registration" });
@@ -155,7 +151,7 @@ router.post("/complete-registration", async (req, res) => {
 router.post("/register", async (req, res) => {
   const { name, email, username, password, year } = req.body;
 
-  if (!name || !email || !username || !password || !year) {
+  if (!name || !email || !username || !password) {
     return res.status(400).json({ error: "All fields required" });
   }
 
@@ -164,12 +160,6 @@ router.post("/register", async (req, res) => {
   const cleanUsername = sanitize(username).toLowerCase().replace(/[^a-z0-9._-]/g, "");
   const cleanEmail = email.toLowerCase().trim();
 
-  // Validate college email
-  if (!isCollegeEmail(cleanEmail)) {
-    return res.status(400).json({
-      error: "Only college/university emails are allowed (e.g. .edu, .edu.in, .ac.in, .ac.au)"
-    });
-  }
 
   // Username validation
   if (cleanUsername.length < 3 || cleanUsername.length > 30) {
@@ -340,14 +330,10 @@ router.post("/login", async (req, res) => {
       { expiresIn: "7d" }
     );
 
+    const { password_hash: _, ...userWithoutPassword } = user;
     res.json({
       token,
-      user: {
-        id: user.id,
-        name: user.name,
-        email: user.email,
-        username: user.username,
-      },
+      user: userWithoutPassword,
     });
   } catch (err: any) {
     console.error("LOGIN ERROR:", err.message);

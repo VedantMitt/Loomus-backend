@@ -6,6 +6,7 @@ const pool = new Pool({
   max: 20,
   connectionTimeoutMillis: 5000,
   idleTimeoutMillis: 30000,
+  keepAlive: true,
 });
 
 // VERY IMPORTANT: Catch idle connection errors to prevent Node from crashing randomly

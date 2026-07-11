@@ -66,11 +66,17 @@ router.get("/", authMiddleware, async (req: any, res) => {
 
     // Time-based status filter
     if (status === "live") {
-      conditions.push(`a.date <= NOW() AND (a.end_date IS NULL OR a.end_date >= NOW()) AND (a.submission_deadline IS NULL OR a.submission_deadline >= NOW())`);
+      conditions.push(`a.date <= NOW() AND (
+        (a.end_date IS NOT NULL AND a.end_date >= NOW()) OR 
+        (a.end_date IS NULL AND a.date >= NOW() - INTERVAL '24 hours')
+      )`);
     } else if (status === "upcoming") {
       conditions.push(`a.date > NOW()`);
     } else if (status === "past" || status === "expired") {
-      conditions.push(`(a.end_date IS NOT NULL AND a.end_date < NOW()) OR (a.end_date IS NULL AND a.date < NOW() - INTERVAL '24 hours') OR (a.submission_deadline IS NOT NULL AND a.submission_deadline < NOW())`);
+      conditions.push(`(
+        (a.end_date IS NOT NULL AND a.end_date < NOW()) OR 
+        (a.end_date IS NULL AND a.date < NOW() - INTERVAL '24 hours')
+      )`);
     }
 
     // City filter (match against location)
@@ -164,9 +170,9 @@ router.get("/", authMiddleware, async (req: any, res) => {
           WHERE am2.activity_id = a.id AND am2.user_id = $1
         ) AS joined,
         (SELECT COUNT(*) FROM submissions s WHERE s.activity_id = a.id) AS submission_count,
-        (SELECT json_agg(json_build_object('name', pu.name, 'profile_pic', pu.profile_pic))
+        (SELECT json_agg(json_build_object('name', pu.name, 'username', pu.username, 'profile_pic', pu.profile_pic))
          FROM (
-           SELECT DISTINCT u2.name, u2.profile_pic
+           SELECT DISTINCT u2.name, u2.username, u2.profile_pic
            FROM activity_members am3
            JOIN users u2 ON u2.id = am3.user_id
            WHERE am3.activity_id = a.id
@@ -226,9 +232,9 @@ router.get("/feed/shared", authMiddleware, async (req: any, res) => {
     const { rows } = await pool.query(`
       SELECT a.*, 
         u.name AS host_name, u.username AS host_username, u.profile_pic AS host_pic,
-        (SELECT json_agg(json_build_object('url', s.content_url, 'desc', s.description, 'author_name', u2.name, 'author_pic', u2.profile_pic))
+        (SELECT json_agg(json_build_object('url', s.content_url, 'desc', s.description, 'author_name', u2.name, 'author_pic', u2.profile_pic) ORDER BY s.created_at DESC)
          FROM submissions s JOIN users u2 ON u2.id = s.user_id WHERE s.activity_id = a.id) as timeline_photos,
-        (SELECT json_agg(json_build_object('name', u3.name, 'profile_pic', u3.profile_pic))
+        (SELECT json_agg(json_build_object('name', u3.name, 'username', u3.username, 'profile_pic', u3.profile_pic))
          FROM activity_members am3 JOIN users u3 ON u3.id = am3.user_id WHERE am3.activity_id = a.id) as participant_previews,
         (SELECT COUNT(*) FROM activity_members am2 WHERE am2.activity_id = a.id) as member_count,
         (SELECT COUNT(*) FROM activity_likes al WHERE al.activity_id = a.id) as likes_count,
@@ -527,15 +533,18 @@ router.post("/:id/join", authMiddleware, async (req: any, res) => {
 // ─────────────────────────────────────────────
 router.get("/:id/comments", authMiddleware, async (req: any, res) => {
   const activityId = req.params.id;
+  const currentUserId = req.user?.id;
 
   try {
     const { rows } = await pool.query(
-      `SELECT c.*, u.name, u.username, u.profile_pic
+      `SELECT c.*, u.name, u.username, u.profile_pic,
+        (SELECT COUNT(*) FROM comment_likes cl WHERE cl.comment_id = c.id) as likes_count,
+        EXISTS(SELECT 1 FROM comment_likes cl WHERE cl.comment_id = c.id AND cl.user_id = $2) as has_liked
        FROM activity_comments c
        JOIN users u ON u.id = c.user_id
        WHERE c.activity_id = $1
        ORDER BY c.created_at ASC`,
-      [activityId]
+      [activityId, currentUserId]
     );
     res.json(rows);
   } catch (err) {
@@ -550,7 +559,7 @@ router.get("/:id/comments", authMiddleware, async (req: any, res) => {
 router.post("/:id/comments", authMiddleware, async (req: any, res) => {
   const activityId = req.params.id;
   const userId = req.user.id;
-  const { content } = req.body;
+  const { content, parent_id } = req.body;
 
   if (!content?.trim()) {
     return res.status(400).json({ error: "Comment content is required" });
@@ -558,8 +567,8 @@ router.post("/:id/comments", authMiddleware, async (req: any, res) => {
 
   try {
     const { rows } = await pool.query(
-      `INSERT INTO activity_comments (activity_id, user_id, content) VALUES ($1, $2, $3) RETURNING *`,
-      [activityId, userId, content.trim()]
+      `INSERT INTO activity_comments (activity_id, user_id, content, parent_id) VALUES ($1, $2, $3, $4) RETURNING *`,
+      [activityId, userId, content.trim(), parent_id || null]
     );
 
     // Fetch user info to return with comment
@@ -569,6 +578,68 @@ router.post("/:id/comments", authMiddleware, async (req: any, res) => {
   } catch (err) {
     console.error("POST COMMENT ERROR:", err);
     res.status(500).json({ error: "Failed to post comment" });
+  }
+});
+
+// ─────────────────────────────────────────────
+// POST /comments/:id/like — like comment
+// ─────────────────────────────────────────────
+router.post("/comments/:id/like", authMiddleware, async (req: any, res) => {
+  const commentId = req.params.id;
+  const userId = req.user.id;
+
+  try {
+    await pool.query(
+      `INSERT INTO comment_likes (comment_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
+      [commentId, userId]
+    );
+    res.json({ message: "Comment liked" });
+  } catch (err) {
+    console.error("LIKE COMMENT ERROR:", err);
+    res.status(500).json({ error: "Failed to like comment" });
+  }
+});
+
+// ─────────────────────────────────────────────
+// DELETE /comments/:id/like — unlike comment
+// ─────────────────────────────────────────────
+router.delete("/comments/:id/like", authMiddleware, async (req: any, res) => {
+  const commentId = req.params.id;
+  const userId = req.user.id;
+
+  try {
+    await pool.query(
+      `DELETE FROM comment_likes WHERE comment_id = $1 AND user_id = $2`,
+      [commentId, userId]
+    );
+    res.json({ message: "Comment unliked" });
+  } catch (err) {
+    console.error("UNLIKE COMMENT ERROR:", err);
+    res.status(500).json({ error: "Failed to unlike comment" });
+  }
+});
+
+// ─────────────────────────────────────────────
+// DELETE /comments/:id — delete comment
+// ─────────────────────────────────────────────
+router.delete("/comments/:id", authMiddleware, async (req: any, res) => {
+  const commentId = req.params.id;
+  const userId = req.user.id;
+
+  try {
+    const { rowCount } = await pool.query(
+      `DELETE FROM activity_comments WHERE id = $1 AND user_id = $2`,
+      [commentId, userId]
+    );
+
+    if (rowCount === 0) {
+      return res.status(403).json({ error: "Not authorized to delete this comment or comment not found" });
+    }
+
+    res.json({ message: "Comment deleted successfully" });
+  } catch (err) {
+    console.error("DELETE COMMENT ERROR:", err);
+    res.status(500).json({ error: "Failed to delete comment" });
   }
 });
 
@@ -707,6 +778,9 @@ router.post("/:id/submit", authMiddleware, async (req: any, res) => {
          INSERT INTO submissions (activity_id, user_id, content_url, description)
          VALUES ($1, $2, $3, $4)
          RETURNING *
+       ),
+       updated_activity AS (
+         UPDATE activities SET is_shared = TRUE, shared_at = NOW(), banner = COALESCE(banner, $3) WHERE id = $1
        )
        SELECT u.*, u2.name, u2.username, u2.profile_pic 
        FROM inserted u
@@ -718,6 +792,42 @@ router.post("/:id/submit", authMiddleware, async (req: any, res) => {
   } catch (err) {
     console.error("SUBMIT ERROR:", err);
     res.status(500).json({ error: "Submission failed" });
+  }
+});
+
+// ─────────────────────────────────────────────
+// POST /activities/:id/cover — set cover image
+// ─────────────────────────────────────────────
+router.post("/:id/cover", authMiddleware, async (req: any, res) => {
+  const activityId = req.params.id;
+  const userId = req.user.id;
+  const { cover_url } = req.body;
+
+  if (!cover_url) {
+    return res.status(400).json({ error: "cover_url required" });
+  }
+
+  try {
+    const activityCheck = await pool.query(
+      `SELECT host_id FROM activities WHERE id = $1`,
+      [activityId]
+    );
+    if (activityCheck.rowCount === 0) {
+      return res.status(404).json({ error: "Activity not found" });
+    }
+    if (activityCheck.rows[0].host_id !== userId) {
+      return res.status(403).json({ error: "Only host can set cover image" });
+    }
+
+    await pool.query(
+      `UPDATE activities SET banner = $1 WHERE id = $2`,
+      [cover_url, activityId]
+    );
+
+    res.json({ success: true, message: "Cover image updated" });
+  } catch (err) {
+    console.error("SET COVER ERROR:", err);
+    res.status(500).json({ error: "Failed to set cover image" });
   }
 });
 

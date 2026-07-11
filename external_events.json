@@ -1,0 +1,42 @@
+[
+  {
+    "id": "ext_1783727736018_1",
+    "title": "Diljit Dosanjh - Dil-Luminati Tour",
+    "location": "JLN Stadium, Delhi",
+    "time": "Oct 26th, 7:00 PM",
+    "type": "Concert",
+    "image": "https://images.unsplash.com/photo-1540039155733-d7696d4eb959?w=600&h=400&fit=crop",
+    "gradient": "rgba(220, 38, 38, 0.4)",
+    "source": "external"
+  },
+  {
+    "id": "ext_1783727736018_2",
+    "title": "Delhi Food Truck Festival",
+    "location": "Jawaharlal Nehru Stadium",
+    "time": "Aug 15th, 4:00 PM",
+    "type": "Food",
+    "image": "https://images.unsplash.com/photo-1555939594-58d7cb561ad1?w=600&h=400&fit=crop",
+    "gradient": "rgba(234, 179, 8, 0.4)",
+    "source": "external"
+  },
+  {
+    "id": "ext_1783727736018_3",
+    "title": "Zomaland by Zomato",
+    "location": "Pragati Maidan",
+    "time": "Sep 2nd, 12:00 PM",
+    "type": "Festival",
+    "image": "https://images.unsplash.com/photo-1533174000255-14eb022f4dc2?w=600&h=400&fit=crop",
+    "gradient": "rgba(59, 130, 246, 0.4)",
+    "source": "external"
+  },
+  {
+    "id": "ext_1783727736018_4",
+    "title": "Standup Comedy Night",
+    "location": "Habitat Centre",
+    "time": "Aug 10th, 8:00 PM",
+    "type": "Comedy",
+    "image": "https://images.unsplash.com/photo-1585699324551-f6c309eedeca?w=600&h=400&fit=crop",
+    "gradient": "rgba(16, 185, 129, 0.4)",
+    "source": "external"
+  }
+]

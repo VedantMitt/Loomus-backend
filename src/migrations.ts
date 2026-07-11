@@ -20,6 +20,11 @@ export const runMigrations = async () => {
         branch TEXT,
         bio TEXT,
         profile_pic TEXT,
+        gender TEXT,
+        dob TIMESTAMP,
+        location_name TEXT,
+        location_lat DECIMAL,
+        location_lng DECIMAL,
         is_verified BOOLEAN DEFAULT FALSE,
         is_invisible BOOLEAN DEFAULT FALSE,
         vibe_tags TEXT[] DEFAULT '{}',
@@ -34,6 +39,13 @@ export const runMigrations = async () => {
         is_admin BOOLEAN DEFAULT FALSE,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
+
+      ALTER TABLE users 
+        ADD COLUMN IF NOT EXISTS gender TEXT,
+        ADD COLUMN IF NOT EXISTS dob TIMESTAMP,
+        ADD COLUMN IF NOT EXISTS location_name TEXT,
+        ADD COLUMN IF NOT EXISTS location_lat DECIMAL,
+        ADD COLUMN IF NOT EXISTS location_lng DECIMAL;
 
       CREATE TABLE IF NOT EXISTS otp_codes (
         id SERIAL PRIMARY KEY,
@@ -135,7 +147,27 @@ export const runMigrations = async () => {
         activity_id UUID REFERENCES activities(id) ON DELETE CASCADE,
         user_id UUID REFERENCES users(id) ON DELETE CASCADE,
         content TEXT NOT NULL,
+        parent_id UUID REFERENCES activity_comments(id) ON DELETE CASCADE,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+
+      -- Safe alter for existing tables
+      DO $$
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns 
+          WHERE table_name='activity_comments' AND column_name='parent_id'
+        ) THEN
+          ALTER TABLE activity_comments ADD COLUMN parent_id UUID REFERENCES activity_comments(id) ON DELETE CASCADE;
+        END IF;
+      END $$;
+
+      CREATE TABLE IF NOT EXISTS comment_likes (
+        id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+        comment_id UUID REFERENCES activity_comments(id) ON DELETE CASCADE,
+        user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(comment_id, user_id)
       );
 
       CREATE TABLE IF NOT EXISTS activity_likes (

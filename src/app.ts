@@ -30,7 +30,7 @@ const allowedOrigins = (process.env.CORS_ORIGIN || "http://localhost:3000")
 app.use(cors({
   origin: (origin, callback) => {
     // Allow requests with no origin (mobile apps, curl, etc)
-    if (!origin || allowedOrigins.includes(origin) || origin === "http://localhost" || origin === "capacitor://localhost" || origin.startsWith("http://192.168.")) {
+    if (!origin || allowedOrigins.includes(origin) || origin === "http://localhost" || origin === "capacitor://localhost" || origin.startsWith("http://192.168.") || origin === "http://10.0.2.2:3000") {
       callback(null, true);
     } else {
       callback(new Error("Not allowed by CORS: " + origin));

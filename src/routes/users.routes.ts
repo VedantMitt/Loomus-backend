@@ -75,8 +75,8 @@ router.get("/discover", async (req, res) => {
   const authHeader = req.headers.authorization;
   if (authHeader?.startsWith("Bearer ")) {
     try {
-      const jwt = await import("jsonwebtoken");
-      const decoded: any = jwt.default.verify(
+      const jwt = require("jsonwebtoken");
+      const decoded: any = jwt.verify(
         authHeader.split(" ")[1],
         process.env.JWT_SECRET as string
       );
@@ -219,8 +219,8 @@ router.get("/:username", async (req, res) => {
   const authHeader = req.headers.authorization;
   if (authHeader?.startsWith("Bearer ")) {
     try {
-      const jwt = await import("jsonwebtoken");
-      const decoded: any = jwt.default.verify(
+      const jwt = require("jsonwebtoken");
+      const decoded: any = jwt.verify(
         authHeader.split(" ")[1],
         process.env.JWT_SECRET as string
       );
@@ -263,7 +263,10 @@ router.get("/:username", async (req, res) => {
         profile_pic,
         instagram,
         linkedin,
-        is_private
+        is_private,
+        (SELECT COUNT(*) FROM friends WHERE (user_id1 = users.id OR user_id2 = users.id) AND status = 'accepted') AS followers_count,
+        (SELECT COUNT(*) FROM activities WHERE host_id = users.id) AS chapters_count,
+        (SELECT COUNT(*) FROM rooms WHERE host_id = users.id) AS looms_count
       FROM users
       WHERE username = $1 ${blockCheck}
       `,
@@ -277,6 +280,71 @@ router.get("/:username", async (req, res) => {
     res.json(rows[0]);
   } catch (err) {
     console.error("GET USER ERROR:", err);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+/* 🔹 Get user snaps/submissions by username */
+router.get("/:username/snaps", async (req, res) => {
+  const { username } = req.params;
+
+  try {
+    const { rows } = await pool.query(
+      `
+      SELECT 
+        s.id,
+        s.content_url,
+        s.description,
+        s.created_at,
+        a.title AS activity_title,
+        a.id AS activity_id
+      FROM submissions s
+      JOIN users u ON u.id = s.user_id
+      LEFT JOIN activities a ON a.id = s.activity_id
+      WHERE u.username = $1
+      ORDER BY s.created_at DESC
+      `,
+      [username.toLowerCase()]
+    );
+
+    res.json(rows);
+  } catch (err) {
+    console.error("GET USER SNAPS ERROR:", err);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+/* 🔹 Get user chapters (activities) by username */
+router.get("/:username/chapters", async (req, res) => {
+  const { username } = req.params;
+
+  try {
+    const { rows } = await pool.query(
+      `
+      SELECT 
+        a.id,
+        a.title,
+        a.type,
+        a.date,
+        a.location,
+        a.description,
+        a.banner AS media_url,
+        a.host_id,
+        u.name AS host_name,
+        u.username AS host_username,
+        u.profile_pic AS host_pic,
+        (SELECT COUNT(*) FROM activity_members WHERE activity_id = a.id AND status = 'accepted') AS members_count
+      FROM activities a
+      JOIN users u ON u.id = a.host_id
+      WHERE u.username = $1 AND a.deleted_at IS NULL
+      ORDER BY a.created_at DESC
+      `,
+      [username.toLowerCase()]
+    );
+
+    res.json(rows);
+  } catch (err) {
+    console.error("GET USER CHAPTERS ERROR:", err);
     res.status(500).json({ error: "Server error" });
   }
 });
@@ -307,7 +375,8 @@ router.put("/:id", authMiddleware, async (req: AuthRequest, res) => {
   try {
     const fields = [
       "username", "bio", "branch", "year", "interests", "vibe_tags",
-      "current_status", "friends_if", "instagram", "linkedin", "profile_pic", "is_invisible"
+      "current_status", "friends_if", "instagram", "linkedin", "profile_pic", "is_invisible",
+      "gender", "dob", "location_name", "location_lat", "location_lng"
     ];
     
     const updates: string[] = [];

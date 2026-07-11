@@ -9,7 +9,11 @@ export const getUserByUsername = async (req: Request, res: Response) => {
 
   try {
     const result = await pool.query(
-      "SELECT * FROM users WHERE username = $1",
+      `SELECT u.*,
+        (SELECT COUNT(*) FROM friends f WHERE (f.user_id1 = u.id OR f.user_id2 = u.id) AND f.status = 'accepted') AS followers_count,
+        (SELECT COUNT(*) FROM activities a WHERE a.host_id = u.id AND a.end_date IS NOT NULL AND a.deleted_at IS NULL) AS chapters_count,
+        (SELECT COUNT(*) FROM activities a WHERE a.host_id = u.id AND a.end_date IS NULL AND a.deleted_at IS NULL) AS looms_count
+       FROM users u WHERE u.username = $1`,
       [username]
     );
 

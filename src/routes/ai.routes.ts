@@ -1,6 +1,9 @@
 import express from "express";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { authMiddleware } from "../middleware/auth.middleware";
+import pool from "../db";
+import fs from "fs";
+import path from "path";
 
 const router = express.Router();
 router.post("/suggest", authMiddleware, async (req, res) => {
@@ -29,79 +32,62 @@ Give a very concise, friendly, and helpful suggestion (max 2 sentences).`;
 });
 
 router.get("/hot-events", async (req, res) => {
-  // Free tier Gemini rate-limits are too strict and District/BMS blocks direct scraping.
-  // We use a pool of REAL 2026 events scraped manually from District.in and BookMyShow.
-  const REAL_2026_EVENTS = [
-    {
-      id: "real_1",
-      title: "Bars by Rolling Loud",
-      location: "Auro Kitchen Bar, Hauz Khas",
-      time: "May 23rd, 8:00 PM",
-      type: "Music",
-      image: "https://images.unsplash.com/photo-1493225457124-a1a2a5f5f92e?w=600&h=400&fit=crop",
-      gradient: "rgba(220, 38, 38, 0.4)"
-    },
-    {
-      id: "real_2",
-      title: "India-Africa Dance Fest",
-      location: "Bharat Mandapam",
-      time: "May 23rd, 5:00 PM",
-      type: "Cultural",
-      image: "https://images.unsplash.com/photo-1533174000255-14eb022f4dc2?w=600&h=400&fit=crop",
-      gradient: "rgba(234, 179, 8, 0.4)"
-    },
-    {
-      id: "real_3",
-      title: "Kendra Dance Festival 2026",
-      location: "Kamani Auditorium",
-      time: "May 25th, 6:30 PM",
-      type: "Dance",
-      image: "https://images.unsplash.com/photo-1547891654-e66ed7ebb968?w=600&h=400&fit=crop",
-      gradient: "rgba(59, 130, 246, 0.4)"
-    },
-    {
-      id: "real_4",
-      title: "Future Funk: One Year Dance",
-      location: "AURO, Hauz Khas",
-      time: "May 22nd, 9:00 PM",
-      type: "Party",
-      image: "https://images.unsplash.com/photo-1511192336575-5a79af67a629?w=600&h=400&fit=crop",
-      gradient: "rgba(168, 85, 247, 0.4)"
-    },
-    {
-      id: "real_5",
-      title: "TOXIC - Abhishek Upmanyu Live",
-      location: "Siri Fort Auditorium",
-      time: "May 26th, 7:00 PM",
-      type: "Comedy",
-      image: "https://images.unsplash.com/photo-1585699324551-f6c309eedeca?w=600&h=400&fit=crop",
-      gradient: "rgba(16, 185, 129, 0.4)"
-    },
-    {
-      id: "real_6",
-      title: "Gaurav Kapoor Live",
-      location: "Kedarnath Sahni Auditorium",
-      time: "May 28th, 8:00 PM",
-      type: "Comedy",
-      image: "https://images.unsplash.com/photo-1585699324551-f6c309eedeca?w=600&h=400&fit=crop",
-      gradient: "rgba(249, 115, 22, 0.4)"
-    },
-    {
-      id: "real_7",
-      title: "Footloose Run 2026",
-      location: "JLN Stadium",
-      time: "May 24th, 5:30 AM",
-      type: "Sports",
-      image: "https://images.unsplash.com/photo-1552674605-db6ffd4facb5?w=600&h=400&fit=crop",
-      gradient: "rgba(6, 182, 212, 0.4)"
-    }
-  ];
-
   try {
-    // Shuffle and pick 4
-    const shuffled = [...REAL_2026_EVENTS].sort(() => 0.5 - Math.random());
-    const selected = shuffled.slice(0, 4);
-    res.json(selected);
+    // 1. Try to fetch from daily scraped cache
+    const CACHE_FILE = path.join(__dirname, "../../../external_events.json");
+    if (fs.existsSync(CACHE_FILE)) {
+      try {
+        const data = JSON.parse(fs.readFileSync(CACHE_FILE, "utf-8"));
+        if (Array.isArray(data) && data.length > 0) {
+          // Shuffle them just to keep it fresh
+          const shuffled = data.sort(() => 0.5 - Math.random()).slice(0, 4);
+          return res.json(shuffled);
+        }
+      } catch (err) {
+        console.error("Failed to read external events cache:", err);
+      }
+    }
+
+    // 2. Fallback to our own database (Loomus users' public events)
+    const { rows } = await pool.query(`
+      SELECT 
+        a.id, 
+        a.title, 
+        a.location, 
+        a.date, 
+        a.type, 
+        COALESCE(a.banner, 'https://images.unsplash.com/photo-1540039155733-d7696d4eb959?w=600&h=400&fit=crop') AS image
+      FROM activities a
+      WHERE a.deleted_at IS NULL 
+        AND a.date > NOW() 
+        AND a.is_public = TRUE
+      ORDER BY (SELECT COUNT(*) FROM activity_rsvps r WHERE r.activity_id = a.id AND r.status = 'going') DESC, a.date ASC
+      LIMIT 10
+    `);
+
+    const gradients = [
+      "rgba(255, 65, 108, 0.4)",
+      "rgba(17, 153, 142, 0.4)",
+      "rgba(142, 45, 226, 0.4)",
+      "rgba(0, 210, 255, 0.4)",
+      "rgba(249, 115, 22, 0.4)",
+      "rgba(16, 185, 129, 0.4)"
+    ];
+
+    const formattedEvents = rows.map((row, index) => {
+      const d = new Date(row.date);
+      return {
+        id: row.id,
+        title: row.title,
+        location: row.location,
+        time: d.toLocaleDateString("en-US", { month: "short", day: "numeric" }) + ", " + d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true }),
+        type: row.type || "Event",
+        image: row.image,
+        gradient: gradients[index % gradients.length]
+      };
+    });
+
+    res.json(formattedEvents);
   } catch (error) {
     console.error("HOT EVENTS ERROR:", error);
     res.status(500).json({ error: "Failed to fetch hot events" });

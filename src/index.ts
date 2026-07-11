@@ -3,14 +3,17 @@ import http from "http";
 import { Server } from "socket.io";
 import app from "./app";
 import submissionsRoutes from "./routes/submissions.routes";
+import suggestionsRoutes from "./routes/suggestions.routes";
+import placesRoutes from "./routes/places.routes";
 import { runMigrations } from "./migrations";
+import { initCronJobs } from "./jobs/eventScraper";
 
 const PORT = Number(process.env.PORT) || 5000;
 
 // Global error handlers
 process.on("uncaughtException", (err) => {
   console.error("💥 UNCAUGHT EXCEPTION! Shutting down...", err);
-  process.exit(1);
+  // process.exit(1); // Removed to prevent random crashes during dev
 });
 
 process.on("unhandledRejection", (err) => {
@@ -23,8 +26,13 @@ async function startServer() {
     // 1. Run database migrations first
     await runMigrations();
 
+    // 1.5 Start scheduled jobs
+    initCronJobs();
+
     // 2. Setup routes that aren't in app.ts
     app.use("/submissions", submissionsRoutes);
+    app.use("/suggestions", suggestionsRoutes);
+    app.use("/places", placesRoutes);
 
     // 3. Create HTTP Server
     const httpServer = http.createServer(app);
@@ -186,3 +194,4 @@ async function startServer() {
 }
 
 startServer();
+// Trigger reload
