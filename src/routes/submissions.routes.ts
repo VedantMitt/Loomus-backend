@@ -80,4 +80,38 @@ if (!userId) {
   }
 });
 
+/**
+ * DELETE /submissions/:id
+ */
+router.delete("/:id", authMiddleware, async (req, res) => {
+  const submissionId = req.params.id;
+  const userId = (req as any).user?.id;
+
+  if (!userId) {
+    return res.status(401).json({ error: "Unauthorized" });
+  }
+
+  try {
+    const submissionResult = await pool.query(
+      "SELECT * FROM submissions WHERE id = $1",
+      [submissionId]
+    );
+
+    if (submissionResult.rows.length === 0) {
+      return res.status(404).json({ error: "Submission not found" });
+    }
+
+    if (submissionResult.rows[0].user_id !== userId) {
+      return res.status(403).json({ error: "Cannot delete someone else's submission" });
+    }
+
+    await pool.query("DELETE FROM submissions WHERE id = $1", [submissionId]);
+
+    res.json({ message: "Submission deleted successfully" });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to delete submission" });
+  }
+});
+
 export default router;
