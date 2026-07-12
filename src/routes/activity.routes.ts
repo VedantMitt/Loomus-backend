@@ -240,7 +240,7 @@ router.get("/feed/shared", authMiddleware, async (req: any, res) => {
     const { rows } = await pool.query(`
       SELECT a.*, 
         u.name AS host_name, u.username AS host_username, u.profile_pic AS host_pic,
-        (SELECT json_agg(json_build_object('url', s.content_url, 'desc', s.description, 'author_name', u2.name, 'author_pic', u2.profile_pic) ORDER BY s.created_at DESC)
+        (SELECT json_agg(json_build_object('url', s.content_url, 'desc', s.description, 'author_name', u2.name, 'author_pic', u2.profile_pic, 'created_at', s.created_at) ORDER BY s.created_at DESC)
          FROM submissions s JOIN users u2 ON u2.id = s.user_id WHERE s.activity_id = a.id) as timeline_photos,
         (SELECT json_agg(json_build_object('name', u3.name, 'username', u3.username, 'profile_pic', u3.profile_pic))
          FROM activity_members am3 JOIN users u3 ON u3.id = am3.user_id WHERE am3.activity_id = a.id) as participant_previews,
