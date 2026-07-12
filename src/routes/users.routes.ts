@@ -330,6 +330,7 @@ router.get("/:username/chapters", async (req, res) => {
         a.description,
         COALESCE(a.chapter_cover, a.banner) AS media_url,
         a.host_id,
+        a.is_public,
         u.name AS host_name,
         u.username AS host_username,
         u.profile_pic AS host_pic,
