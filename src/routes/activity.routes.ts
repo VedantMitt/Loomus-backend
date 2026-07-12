@@ -142,13 +142,15 @@ router.get("/", authMiddleware, async (req: any, res) => {
       paramIdx++;
     }
 
-    // Tab: "my" = only activities user has joined/RSVP'd to
+    // Tab: "my" = only activities user has joined/RSVP'd to, OR hosted
     let joinClause = "";
     if (tab === "my") {
       joinClause = `INNER JOIN (
         SELECT activity_id FROM activity_members WHERE user_id = $1
         UNION
         SELECT activity_id FROM activity_rsvps WHERE user_id = $1
+        UNION
+        SELECT id AS activity_id FROM activities WHERE host_id = $1
       ) my ON my.activity_id = a.id`;
     }
 

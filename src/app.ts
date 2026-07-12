@@ -18,6 +18,9 @@ import submissionsRoutes from "./routes/submissions.routes";
 
 const app = express();
 
+// Trust reverse proxies (Render, Heroku, etc) so rate limiter uses actual user IPs
+app.set('trust proxy', 1);
+
 // ─── Security Headers ────────────────────────────────
 app.use(helmet({
   crossOriginResourcePolicy: { policy: "cross-origin" }, // Allow serving images cross-origin
@@ -47,7 +50,7 @@ app.use(express.urlencoded({ extended: true, limit: "10kb" }));
 // ─── Global Rate Limiter ─────────────────────────────
 const globalLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 200, // 200 requests per 15 min per IP
+  max: 2000, // Increased to 2000 for development to prevent blocking
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: "Too many requests, please try again later." },
