@@ -828,7 +828,7 @@ router.post("/:id/cover", authMiddleware, async (req: any, res) => {
     }
 
     await pool.query(
-      `UPDATE activities SET banner = $1 WHERE id = $2`,
+      `UPDATE activities SET chapter_cover = $1 WHERE id = $2`,
       [cover_url, activityId]
     );
 
@@ -896,7 +896,7 @@ router.put("/:id", authMiddleware, async (req: any, res) => {
   const activityId = req.params.id;
   const userId = req.user.id;
   const { 
-    title, type, date, location, description, banner, mode, 
+    title, type, date, location, description, banner, chapter_cover, mode, 
     max_participants, join_deadline, submission_deadline, 
     allow_submissions, format, social_links,
     is_official, hosted_by_name, college_name, society_name,
@@ -917,26 +917,27 @@ router.put("/:id", authMiddleware, async (req: any, res) => {
         location = COALESCE($4, location),
         description = COALESCE($5, description),
         banner = COALESCE($6, banner),
-        mode = COALESCE($7, mode),
-        max_participants = $8,
-        join_deadline = $9,
-        submission_deadline = $10,
-        allow_submissions = COALESCE($11, allow_submissions),
-        format = COALESCE($12, format),
-        social_links = COALESCE($13, social_links),
-        is_official = COALESCE($14, is_official),
-        hosted_by_name = COALESCE($15, hosted_by_name),
-        college_name = COALESCE($16, college_name),
-        society_name = COALESCE($17, society_name),
-        is_free = COALESCE($18, is_free),
-        price = COALESCE($19, price),
-        end_date = $20,
-        itinerary = COALESCE($21, itinerary),
-        is_public = COALESCE($22, is_public)
-       WHERE id = $23
+        chapter_cover = COALESCE($7, chapter_cover),
+        mode = COALESCE($8, mode),
+        max_participants = $9,
+        join_deadline = $10,
+        submission_deadline = $11,
+        allow_submissions = COALESCE($12, allow_submissions),
+        format = COALESCE($13, format),
+        social_links = COALESCE($14, social_links),
+        is_official = COALESCE($15, is_official),
+        hosted_by_name = COALESCE($16, hosted_by_name),
+        college_name = COALESCE($17, college_name),
+        society_name = COALESCE($18, society_name),
+        is_free = COALESCE($19, is_free),
+        price = COALESCE($20, price),
+        end_date = $21,
+        itinerary = COALESCE($22, itinerary),
+        is_public = COALESCE($23, is_public)
+       WHERE id = $24
        RETURNING *`,
       [
-        title, type, date, location, description, banner, mode, 
+        title, type, date, location, description, banner, chapter_cover, mode, 
         max_participants || null, join_deadline || null, submission_deadline || null, 
         allow_submissions, format, social_links ? JSON.stringify(social_links) : null,
         is_official, hosted_by_name, college_name, society_name,

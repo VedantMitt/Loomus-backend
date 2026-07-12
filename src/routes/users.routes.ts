@@ -328,7 +328,7 @@ router.get("/:username/chapters", async (req, res) => {
         a.date,
         a.location,
         a.description,
-        a.banner AS media_url,
+        COALESCE(a.chapter_cover, a.banner) AS media_url,
         a.host_id,
         u.name AS host_name,
         u.username AS host_username,
@@ -336,7 +336,7 @@ router.get("/:username/chapters", async (req, res) => {
         (SELECT COUNT(*) FROM activity_members WHERE activity_id = a.id AND status = 'accepted') AS members_count
       FROM activities a
       JOIN users u ON u.id = a.host_id
-      WHERE u.username = $1 AND a.deleted_at IS NULL AND a.is_chapter_deleted = false
+      WHERE u.username = $1 AND a.deleted_at IS NULL AND a.is_chapter_deleted = false AND a.date < NOW()
       ORDER BY a.created_at DESC
       `,
       [username.toLowerCase()]
