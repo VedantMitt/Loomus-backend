@@ -840,6 +840,33 @@ router.post("/:id/cover", authMiddleware, async (req: any, res) => {
 });
 
 // ─────────────────────────────────────────────
+// POST /activities/:id/submissions
+// ─────────────────────────────────────────────
+router.post("/:id/submissions", authMiddleware, async (req: any, res) => {
+  const activityId = req.params.id;
+  const userId = req.user.id;
+  const { content_url, description } = req.body;
+
+  if (!content_url) {
+    return res.status(400).json({ error: "content_url is required" });
+  }
+
+  try {
+    const { rows } = await pool.query(
+      `INSERT INTO submissions (activity_id, user_id, content_url, description)
+       VALUES ($1, $2, $3, $4)
+       RETURNING *`,
+      [activityId, userId, content_url, description]
+    );
+
+    res.json(rows[0]);
+  } catch (err) {
+    console.error("POST SUBMISSION ERROR:", err);
+    res.status(500).json({ error: "Failed to add submission" });
+  }
+});
+
+// ─────────────────────────────────────────────
 // GET /activities/:id/submissions
 // ─────────────────────────────────────────────
 router.get("/:id/submissions", async (req, res) => {
