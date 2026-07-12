@@ -73,4 +73,48 @@ router.post(
   }
 );
 
+// POST /upload/image
+// Generic endpoint for uploading activity banners, submissions, etc.
+router.post(
+  "/image",
+  authMiddleware,
+  upload.single("image"),
+  async (req: AuthRequest, res) => {
+    try {
+      const userId = req.user?.id;
+      if (!userId || !req.file) {
+        return res.status(400).json({ error: "No file uploaded" });
+      }
+
+      const ext = req.file.originalname.split(".").pop()?.toLowerCase() || "jpg";
+      const fileName = `images/${userId}-${Date.now()}.${ext}`;
+
+      // Upload to Supabase Storage
+      const { data, error } = await supabase.storage
+        .from("uploads")
+        .upload(fileName, req.file.buffer, {
+          contentType: req.file.mimetype,
+          upsert: true,
+        });
+
+      if (error) {
+        console.error("SUPABASE UPLOAD ERROR:", error);
+        return res.status(500).json({ error: "Upload to storage failed" });
+      }
+
+      // Get public URL
+      const { data: urlData } = supabase.storage
+        .from("uploads")
+        .getPublicUrl(fileName);
+
+      const publicUrl = urlData.publicUrl;
+
+      res.json({ url: publicUrl });
+    } catch (err) {
+      console.error("UPLOAD IMAGE ERROR:", err);
+      res.status(500).json({ error: "Upload failed" });
+    }
+  }
+);
+
 export default router;
