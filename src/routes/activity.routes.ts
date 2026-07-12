@@ -251,6 +251,11 @@ router.get("/feed/shared", authMiddleware, async (req: any, res) => {
       FROM activities a
       JOIN users u ON u.id = a.host_id
       WHERE a.is_shared = TRUE AND a.deleted_at IS NULL
+        AND (
+          a.is_public = TRUE
+          OR a.host_id = $1
+          OR EXISTS (SELECT 1 FROM activity_members am WHERE am.activity_id = a.id AND am.user_id = $1 AND am.status = 'accepted')
+        )
         AND EXISTS (
           SELECT 1 FROM activity_members am 
           JOIN friends f ON (f.user_id1 = am.user_id OR f.user_id2 = am.user_id)
