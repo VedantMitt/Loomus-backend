@@ -4,7 +4,7 @@ import { Router } from "express";
 import pool from "../db";
 import { getUserByUsername } from "./users.controller";
 
-import { authMiddleware, AuthRequest } from "../middleware/auth.middleware";
+import { authMiddleware, optionalAuthMiddleware, AuthRequest } from "../middleware/auth.middleware";
 
 const router = Router();
 
@@ -315,8 +315,9 @@ router.get("/:username/snaps", async (req, res) => {
 });
 
 /* 🔹 Get user chapters (activities) by username */
-router.get("/:username/chapters", async (req, res) => {
+router.get("/:username/chapters", optionalAuthMiddleware, async (req: AuthRequest, res) => {
   const { username } = req.params;
+  const currentUserId = req.user?.id;
 
   try {
     const { rows } = await pool.query(
@@ -334,13 +335,24 @@ router.get("/:username/chapters", async (req, res) => {
         u.name AS host_name,
         u.username AS host_username,
         u.profile_pic AS host_pic,
-        (SELECT COUNT(*) FROM activity_members WHERE activity_id = a.id AND status = 'accepted') AS members_count
+        (SELECT COUNT(*) FROM activity_members WHERE activity_id = a.id) AS members_count
       FROM activities a
       JOIN users u ON u.id = a.host_id
-      WHERE u.username = $1 AND a.deleted_at IS NULL AND a.is_chapter_deleted = false AND a.date < NOW()
+      WHERE u.username = $1 
+        AND a.deleted_at IS NULL 
+        AND a.is_chapter_deleted = false 
+        AND a.date < NOW()
+        AND (
+          a.is_public = true 
+          OR a.host_id = $2
+          OR EXISTS (
+            SELECT 1 FROM activity_members am 
+            WHERE am.activity_id = a.id AND am.user_id = $2
+          )
+        )
       ORDER BY a.created_at DESC
       `,
-      [username.toLowerCase()]
+      [username.toLowerCase(), currentUserId || null]
     );
 
     res.json(rows);

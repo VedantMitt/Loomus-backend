@@ -254,7 +254,7 @@ router.get("/feed/shared", authMiddleware, async (req: any, res) => {
         AND (
           a.is_public = TRUE
           OR a.host_id = $1
-          OR EXISTS (SELECT 1 FROM activity_members am WHERE am.activity_id = a.id AND am.user_id = $1 AND am.status = 'accepted')
+          OR EXISTS (SELECT 1 FROM activity_members am WHERE am.activity_id = a.id AND am.user_id = $1)
         )
         AND EXISTS (
           SELECT 1 FROM activity_members am 
