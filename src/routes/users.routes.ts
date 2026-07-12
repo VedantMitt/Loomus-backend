@@ -304,7 +304,7 @@ router.get("/:username/snaps", async (req, res) => {
       WHERE u.username = $1
       ORDER BY s.created_at DESC
       `,
-      [username.toLowerCase()]
+      [String(username).toLowerCase()]
     );
 
     res.json(rows);
@@ -352,7 +352,7 @@ router.get("/:username/chapters", optionalAuthMiddleware, async (req: AuthReques
         )
       ORDER BY a.created_at DESC
       `,
-      [username.toLowerCase(), currentUserId || null]
+      [String(username).toLowerCase(), currentUserId || null]
     );
 
     res.json(rows);
