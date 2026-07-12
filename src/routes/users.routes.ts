@@ -336,7 +336,7 @@ router.get("/:username/chapters", async (req, res) => {
         (SELECT COUNT(*) FROM activity_members WHERE activity_id = a.id AND status = 'accepted') AS members_count
       FROM activities a
       JOIN users u ON u.id = a.host_id
-      WHERE u.username = $1 AND a.deleted_at IS NULL
+      WHERE u.username = $1 AND a.deleted_at IS NULL AND a.is_chapter_deleted = false
       ORDER BY a.created_at DESC
       `,
       [username.toLowerCase()]

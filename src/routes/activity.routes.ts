@@ -53,6 +53,12 @@ router.get("/", authMiddleware, async (req: any, res) => {
     let params: any[] = [userId];
     let paramIdx = 2;
 
+    if (tab === 'my') {
+      conditions.push("a.is_chapter_deleted = false");
+    } else {
+      conditions.push("a.is_loom_deleted = false");
+    }
+
     if (is_public === "true") {
       conditions.push(`a.is_public = TRUE`);
     }
@@ -940,14 +946,24 @@ router.put("/:id", authMiddleware, async (req: any, res) => {
 router.delete("/:id", authMiddleware, async (req: any, res) => {
   const activityId = req.params.id;
   const userId = req.user.id;
+  const type = req.query.type; // 'loom' or 'chapter'
 
   try {
     const activity = await pool.query(`SELECT host_id FROM activities WHERE id = $1`, [activityId]);
     if (activity.rows.length === 0) return res.status(404).json({ error: "Activity not found" });
     if (activity.rows[0].host_id !== userId) return res.status(403).json({ error: "Only the host can delete" });
 
-    // Soft delete
-    await pool.query(`UPDATE activities SET deleted_at = NOW() WHERE id = $1`, [activityId]);
+    if (type === 'chapter') {
+      // User only wants to delete the Chapter (memories)
+      await pool.query(`UPDATE activities SET is_chapter_deleted = true WHERE id = $1`, [activityId]);
+      await pool.query(`DELETE FROM submissions WHERE activity_id = $1`, [activityId]);
+    } else if (type === 'loom') {
+      // User only wants to delete the Loom (future plans)
+      await pool.query(`UPDATE activities SET is_loom_deleted = true WHERE id = $1`, [activityId]);
+    } else {
+      // Fallback: soft delete entire activity for backward compatibility
+      await pool.query(`UPDATE activities SET deleted_at = NOW() WHERE id = $1`, [activityId]);
+    }
 
     res.json({ message: "Activity deleted" });
   } catch (err) {
