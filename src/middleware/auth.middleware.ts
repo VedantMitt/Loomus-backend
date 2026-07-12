@@ -42,3 +42,32 @@ export const authMiddleware = (
     return res.status(401).json({ error: "Invalid token" });
   }
 };
+
+export const optionalAuthMiddleware = (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction
+) => {
+  const authHeader = req.headers.authorization;
+
+  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    return next();
+  }
+
+  const token = authHeader.split(" ")[1];
+
+  try {
+    if (process.env.JWT_SECRET) {
+      const decoded = jwt.verify(token, process.env.JWT_SECRET) as {
+        id: string;
+        name?: string;
+        username?: string;
+        profile_pic?: string;
+      };
+      req.user = { id: decoded.id, name: decoded.name, username: decoded.username, profile_pic: decoded.profile_pic };
+    }
+  } catch (err) {
+    // Ignore error
+  }
+  next();
+};
