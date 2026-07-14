@@ -55,6 +55,7 @@ router.get("/", authMiddleware, async (req: any, res) => {
 
     if (tab === 'my') {
       conditions.push("a.is_chapter_deleted = false");
+      conditions.push(`NOT EXISTS (SELECT 1 FROM hidden_activities ha WHERE ha.activity_id = a.id AND ha.user_id = $1)`);
     } else {
       conditions.push("a.is_loom_deleted = false");
     }
@@ -982,15 +983,17 @@ router.delete("/:id", authMiddleware, async (req: any, res) => {
   const type = req.query.type; // 'loom' or 'chapter'
 
   try {
+    if (type === 'chapter') {
+      // User only wants to delete the Chapter (memories) for themselves
+      await pool.query(`INSERT INTO hidden_activities (user_id, activity_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`, [userId, activityId]);
+      return res.json({ message: "Chapter hidden successfully" });
+    }
+
     const activity = await pool.query(`SELECT host_id FROM activities WHERE id = $1`, [activityId]);
     if (activity.rows.length === 0) return res.status(404).json({ error: "Activity not found" });
     if (activity.rows[0].host_id !== userId) return res.status(403).json({ error: "Only the host can delete" });
 
-    if (type === 'chapter') {
-      // User only wants to delete the Chapter (memories)
-      await pool.query(`UPDATE activities SET is_chapter_deleted = true WHERE id = $1`, [activityId]);
-      await pool.query(`DELETE FROM submissions WHERE activity_id = $1`, [activityId]);
-    } else if (type === 'loom') {
+    if (type === 'loom') {
       // User only wants to delete the Loom (future plans)
       await pool.query(`UPDATE activities SET is_loom_deleted = true WHERE id = $1`, [activityId]);
     } else {
