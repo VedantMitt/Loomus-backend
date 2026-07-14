@@ -116,4 +116,52 @@ router.delete("/:id", authMiddleware, async (req, res) => {
   }
 });
 
+/**
+ * PUT /submissions/:id
+ */
+router.put("/:id", authMiddleware, async (req, res) => {
+  const submissionId = req.params.id;
+  const userId = (req as any).user?.id;
+  const { location } = req.body;
+
+  if (!userId) {
+    return res.status(401).json({ error: "Unauthorized" });
+  }
+
+  try {
+    const submissionResult = await pool.query(
+      "SELECT * FROM submissions WHERE id = $1",
+      [submissionId]
+    );
+
+    if (submissionResult.rows.length === 0) {
+      return res.status(404).json({ error: "Submission not found" });
+    }
+
+    if (submissionResult.rows[0].user_id !== userId) {
+      return res.status(403).json({ error: "Cannot edit someone else's submission" });
+    }
+
+    const sub = submissionResult.rows[0];
+    let meta = {};
+    try {
+      if (sub.description && sub.description.startsWith('{')) {
+        meta = JSON.parse(sub.description);
+      }
+    } catch(e) {}
+
+    meta = { ...meta, location };
+    
+    await pool.query(
+      "UPDATE submissions SET description = $1 WHERE id = $2",
+      [JSON.stringify(meta), submissionId]
+    );
+
+    res.json({ message: "Location updated successfully", description: JSON.stringify(meta) });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to update submission" });
+  }
+});
+
 export default router;
