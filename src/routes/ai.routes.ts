@@ -48,47 +48,8 @@ router.get("/hot-events", async (req, res) => {
       }
     }
 
-    // 2. Fallback to our own database (Loomus users' public events)
-    const { rows } = await pool.query(`
-      SELECT 
-        a.id, 
-        a.title, 
-        a.location, 
-        a.date, 
-        a.type, 
-        COALESCE(NULLIF(a.banner, ''), 'https://images.unsplash.com/photo-1540039155733-d7696d4eb959?w=600&h=400&fit=crop') AS image
-      FROM activities a
-      WHERE a.deleted_at IS NULL 
-        AND a.date > NOW() 
-        AND a.is_public = TRUE
-        AND a.type != 'hobby'
-      ORDER BY (SELECT COUNT(*) FROM activity_rsvps r WHERE r.activity_id = a.id AND r.status = 'going') DESC, a.date ASC
-      LIMIT 10
-    `);
-
-    const gradients = [
-      "rgba(255, 65, 108, 0.4)",
-      "rgba(17, 153, 142, 0.4)",
-      "rgba(142, 45, 226, 0.4)",
-      "rgba(0, 210, 255, 0.4)",
-      "rgba(249, 115, 22, 0.4)",
-      "rgba(16, 185, 129, 0.4)"
-    ];
-
-    const formattedEvents = rows.map((row, index) => {
-      const d = new Date(row.date);
-      return {
-        id: row.id,
-        title: row.title,
-        location: row.location,
-        time: d.toLocaleDateString("en-US", { month: "short", day: "numeric" }) + ", " + d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true }),
-        type: row.type || "Event",
-        image: row.image,
-        gradient: gradients[index % gradients.length]
-      };
-    });
-
-    res.json(formattedEvents);
+    // If no external events exist, return empty array so frontend falls back to default TOP_LIVE_EVENTS
+    return res.json([]);
   } catch (error) {
     console.error("HOT EVENTS ERROR:", error);
     res.status(500).json({ error: "Failed to fetch hot events" });
