@@ -859,9 +859,17 @@ router.post("/:id/submissions", authMiddleware, async (req: any, res) => {
 
   try {
     const { rows } = await pool.query(
-      `INSERT INTO submissions (activity_id, user_id, content_url, description)
-       VALUES ($1, $2, $3, $4)
-       RETURNING *`,
+      `WITH inserted AS (
+         INSERT INTO submissions (activity_id, user_id, content_url, description)
+         VALUES ($1, $2, $3, $4)
+         RETURNING *
+       ),
+       updated_activity AS (
+         UPDATE activities SET banner = COALESCE(NULLIF(banner, ''), $3), chapter_cover = COALESCE(NULLIF(chapter_cover, ''), $3) WHERE id = $1
+       )
+       SELECT u.*, u2.name, u2.username, u2.profile_pic 
+       FROM inserted u
+       JOIN users u2 ON u2.id = u.user_id`,
       [activityId, userId, content_url, description]
     );
 
