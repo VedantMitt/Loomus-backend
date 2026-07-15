@@ -794,7 +794,7 @@ router.post("/:id/submit", authMiddleware, async (req: any, res) => {
          RETURNING *
        ),
        updated_activity AS (
-         UPDATE activities SET is_shared = TRUE, shared_at = NOW(), banner = COALESCE(banner, $3) WHERE id = $1
+         UPDATE activities SET is_shared = TRUE, shared_at = NOW(), banner = COALESCE(NULLIF(banner, ''), $3), chapter_cover = COALESCE(NULLIF(chapter_cover, ''), $3) WHERE id = $1
        )
        SELECT u.*, u2.name, u2.username, u2.profile_pic 
        FROM inserted u

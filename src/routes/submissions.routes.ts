@@ -101,13 +101,45 @@ router.delete("/:id", authMiddleware, async (req, res) => {
       return res.status(404).json({ error: "Submission not found" });
     }
 
-    if (submissionResult.rows[0].user_id !== userId) {
+    const submission = submissionResult.rows[0];
+    const { activity_id, content_url } = submission;
+
+    if (submission.user_id !== userId) {
       return res.status(403).json({ error: "Cannot delete someone else's submission" });
     }
 
     // Delete associated votes first to avoid foreign key constraints
     await pool.query("DELETE FROM votes WHERE submission_id = $1", [submissionId]);
     await pool.query("DELETE FROM submissions WHERE id = $1", [submissionId]);
+
+    // Check if this was the cover or banner
+    const activityResult = await pool.query(
+      "SELECT chapter_cover, banner FROM activities WHERE id = $1",
+      [activity_id]
+    );
+
+    if (activityResult.rows.length > 0) {
+      const act = activityResult.rows[0];
+      const wasChapterCover = act.chapter_cover === content_url;
+      const wasBanner = act.banner === content_url;
+
+      if (wasChapterCover || wasBanner) {
+        // Find next oldest submission
+        const nextSub = await pool.query(
+          "SELECT content_url FROM submissions WHERE activity_id = $1 ORDER BY created_at ASC LIMIT 1",
+          [activity_id]
+        );
+        const nextUrl = nextSub.rows.length > 0 ? nextSub.rows[0].content_url : null;
+        
+        if (wasChapterCover && wasBanner) {
+          await pool.query("UPDATE activities SET chapter_cover = $1, banner = $1 WHERE id = $2", [nextUrl, activity_id]);
+        } else if (wasChapterCover) {
+          await pool.query("UPDATE activities SET chapter_cover = $1 WHERE id = $2", [nextUrl, activity_id]);
+        } else if (wasBanner) {
+          await pool.query("UPDATE activities SET banner = $1 WHERE id = $2", [nextUrl, activity_id]);
+        }
+      }
+    }
 
     res.json({ message: "Submission deleted successfully" });
   } catch (err) {
