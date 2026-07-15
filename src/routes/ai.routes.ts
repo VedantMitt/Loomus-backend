@@ -56,11 +56,12 @@ router.get("/hot-events", async (req, res) => {
         a.location, 
         a.date, 
         a.type, 
-        COALESCE(a.banner, 'https://images.unsplash.com/photo-1540039155733-d7696d4eb959?w=600&h=400&fit=crop') AS image
+        COALESCE(NULLIF(a.banner, ''), 'https://images.unsplash.com/photo-1540039155733-d7696d4eb959?w=600&h=400&fit=crop') AS image
       FROM activities a
       WHERE a.deleted_at IS NULL 
         AND a.date > NOW() 
         AND a.is_public = TRUE
+        AND a.type != 'hobby'
       ORDER BY (SELECT COUNT(*) FROM activity_rsvps r WHERE r.activity_id = a.id AND r.status = 'going') DESC, a.date ASC
       LIMIT 10
     `);
