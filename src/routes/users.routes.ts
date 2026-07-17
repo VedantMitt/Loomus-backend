@@ -389,7 +389,7 @@ router.put("/:id", authMiddleware, async (req: AuthRequest, res) => {
     const fields = [
       "username", "bio", "branch", "year", "interests", "vibe_tags",
       "current_status", "friends_if", "instagram", "linkedin", "profile_pic", "is_invisible",
-      "gender", "dob", "location_name", "location_lat", "location_lng"
+      "gender", "dob", "location_name", "location_lat", "location_lng", "is_private"
     ];
     
     const updates: string[] = [];

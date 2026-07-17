@@ -233,14 +233,14 @@ router.get("/top", authMiddleware, async (req: any, res) => {
 });
 
 // ─────────────────────────────────────────────
-// GET /activities/feed/shared — feed of friends' shared scrapbooks
+// GET /activities/feed/shared — feed of friends' shared scrapbooks & public scrapbooks
 // ─────────────────────────────────────────────
 router.get("/feed/shared", authMiddleware, async (req: any, res) => {
   const userId = req.user.id;
   try {
     const { rows } = await pool.query(`
       SELECT a.*, 
-        u.name AS host_name, u.username AS host_username, u.profile_pic AS host_pic,
+        u.name AS host_name, u.username AS host_username, u.profile_pic AS host_pic, u.is_private AS host_is_private,
         (SELECT json_agg(json_build_object('url', s.content_url, 'desc', s.description, 'author_name', u2.name, 'author_pic', u2.profile_pic) ORDER BY s.created_at DESC)
          FROM submissions s JOIN users u2 ON u2.id = s.user_id WHERE s.activity_id = a.id) as timeline_photos,
         (SELECT json_agg(json_build_object('name', u3.name, 'username', u3.username, 'profile_pic', u3.profile_pic))
@@ -248,29 +248,50 @@ router.get("/feed/shared", authMiddleware, async (req: any, res) => {
         (SELECT COUNT(*) FROM activity_members am2 WHERE am2.activity_id = a.id) as member_count,
         (SELECT COUNT(*) FROM activity_likes al WHERE al.activity_id = a.id) as likes_count,
         EXISTS(SELECT 1 FROM activity_likes al WHERE al.activity_id = a.id AND al.user_id = $1) as has_liked,
-        (SELECT COUNT(*) FROM activity_comments ac WHERE ac.activity_id = a.id) as comment_count
+        (SELECT COUNT(*) FROM activity_comments ac WHERE ac.activity_id = a.id) as comment_count,
+        EXISTS(SELECT 1 FROM activity_views av WHERE av.activity_id = a.id AND av.user_id = $1) as has_seen,
+        EXISTS(SELECT 1 FROM friends f WHERE ((f.user_id1 = u.id AND f.user_id2 = $1) OR (f.user_id2 = u.id AND f.user_id1 = $1)) AND f.status = 'accepted') as is_host_friend
       FROM activities a
       JOIN users u ON u.id = a.host_id
       WHERE a.is_shared = TRUE AND a.deleted_at IS NULL
+        AND EXISTS (SELECT 1 FROM submissions s WHERE s.activity_id = a.id)
         AND (
-          a.is_public = TRUE
-          OR a.host_id = $1
+          a.host_id = $1
           OR EXISTS (SELECT 1 FROM activity_members am WHERE am.activity_id = a.id AND am.user_id = $1)
+          OR u.is_private = FALSE
+          OR EXISTS (
+            SELECT 1 FROM activity_members am 
+            JOIN friends f ON (f.user_id1 = am.user_id OR f.user_id2 = am.user_id)
+            WHERE am.activity_id = a.id AND am.user_id != $1
+            AND (f.user_id1 = $1 OR f.user_id2 = $1)
+            AND f.status = 'accepted'
+          )
         )
-        AND EXISTS (
-          SELECT 1 FROM activity_members am 
-          JOIN friends f ON (f.user_id1 = am.user_id OR f.user_id2 = am.user_id)
-          WHERE am.activity_id = a.id AND am.user_id != $1
-          AND (f.user_id1 = $1 OR f.user_id2 = $1)
-          AND f.status = 'accepted'
-        )
-      ORDER BY a.shared_at DESC NULLS LAST
+      ORDER BY has_seen ASC, a.shared_at DESC NULLS LAST
       LIMIT 20
     `, [userId]);
     res.json(rows);
   } catch (err) {
     console.error("SHARED FEED ERROR:", err);
     res.status(500).json({ error: "Failed to fetch shared scrapbooks" });
+  }
+});
+
+// ─────────────────────────────────────────────
+// POST /activities/:id/view — mark scrapbook as seen
+// ─────────────────────────────────────────────
+router.post("/:id/view", authMiddleware, async (req: any, res) => {
+  const activityId = req.params.id;
+  const userId = req.user.id;
+  try {
+    await pool.query(
+      `INSERT INTO activity_views (activity_id, user_id) VALUES ($1, $2) ON CONFLICT (activity_id, user_id) DO NOTHING`,
+      [activityId, userId]
+    );
+    res.json({ message: "View recorded" });
+  } catch (err) {
+    console.error("MARK VIEW ERROR:", err);
+    res.status(500).json({ error: "Failed to mark as viewed" });
   }
 });
 
