@@ -241,7 +241,16 @@ router.get("/feed/shared", authMiddleware, async (req: any, res) => {
     const { rows } = await pool.query(`
       SELECT a.*, 
         u.name AS host_name, u.username AS host_username, u.profile_pic AS host_pic, u.is_private AS host_is_private,
-        (SELECT json_agg(json_build_object('url', s.content_url, 'desc', s.description, 'author_name', u2.name, 'author_pic', u2.profile_pic) ORDER BY s.created_at DESC)
+        (SELECT json_agg(json_build_object(
+          'id', s.id,
+          'url', s.content_url, 
+          'desc', s.description, 
+          'author_name', u2.name, 
+          'author_pic', u2.profile_pic,
+          'vote_count', (SELECT COUNT(*) FROM votes v WHERE v.submission_id = s.id),
+          'has_voted', EXISTS(SELECT 1 FROM votes v WHERE v.submission_id = s.id AND v.user_id = $1),
+          'comment_count', (SELECT COUNT(*) FROM activity_comments ac WHERE ac.submission_id = s.id)
+        ) ORDER BY s.created_at DESC)
          FROM submissions s JOIN users u2 ON u2.id = s.user_id WHERE s.activity_id = a.id) as timeline_photos,
         (SELECT json_agg(json_build_object('name', u3.name, 'username', u3.username, 'profile_pic', u3.profile_pic))
          FROM activity_members am3 JOIN users u3 ON u3.id = am3.user_id WHERE am3.activity_id = a.id) as participant_previews,
@@ -973,16 +982,30 @@ router.post("/:id/submissions", authMiddleware, async (req: any, res) => {
 // ─────────────────────────────────────────────
 router.get("/:id/submissions", async (req, res) => {
   const activityId = req.params.id;
+  
+  let userId = null;
+  if (req.headers.authorization) {
+    const token = req.headers.authorization.split(" ")[1];
+    if (token) {
+      try {
+        const payload = JSON.parse(Buffer.from(token.split('.')[1], 'base64').toString());
+        userId = payload.userId || payload.id;
+      } catch (e) {}
+    }
+  }
 
   try {
     const { rows } = await pool.query(
       `SELECT s.id, s.content_url, s.description, s.created_at,
-              u.id AS user_id, u.name, u.profile_pic
+              u.id AS user_id, u.name, u.profile_pic,
+              (SELECT COUNT(*) FROM votes v WHERE v.submission_id = s.id) AS vote_count,
+              (SELECT COUNT(*) FROM activity_comments c WHERE c.submission_id = s.id) AS comment_count,
+              EXISTS(SELECT 1 FROM votes v WHERE v.submission_id = s.id AND v.user_id = $2) AS has_voted
        FROM submissions s
        JOIN users u ON u.id = s.user_id
        WHERE s.activity_id = $1
        ORDER BY s.created_at DESC`,
-      [activityId]
+      [activityId, userId]
     );
     res.json(rows);
   } catch (err) {

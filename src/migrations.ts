@@ -160,6 +160,13 @@ export const runMigrations = async () => {
         ) THEN
           ALTER TABLE activity_comments ADD COLUMN parent_id UUID REFERENCES activity_comments(id) ON DELETE CASCADE;
         END IF;
+        
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns 
+          WHERE table_name='activity_comments' AND column_name='submission_id'
+        ) THEN
+          ALTER TABLE activity_comments ADD COLUMN submission_id UUID REFERENCES submissions(id) ON DELETE CASCADE;
+        END IF;
       END $$;
 
       CREATE TABLE IF NOT EXISTS comment_likes (

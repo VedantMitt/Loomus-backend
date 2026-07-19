@@ -196,4 +196,89 @@ router.put("/:id", authMiddleware, async (req, res) => {
   }
 });
 
+/**
+ * GET /submissions/:id/comments
+ */
+router.get("/:id/comments", authMiddleware, async (req, res) => {
+  const submissionId = req.params.id;
+  try {
+    const { rows } = await pool.query(
+      `SELECT c.*, u.name as user_name, u.username as user_username, u.profile_pic as user_pic,
+       (SELECT COUNT(*) FROM comment_likes cl WHERE cl.comment_id = c.id) as like_count,
+       EXISTS(SELECT 1 FROM comment_likes cl WHERE cl.comment_id = c.id AND cl.user_id = $2) as has_liked
+       FROM activity_comments c
+       JOIN users u ON u.id = c.user_id
+       WHERE c.submission_id = $1
+       ORDER BY c.created_at DESC`,
+      [submissionId, (req as any).user?.id]
+    );
+    res.json(rows);
+  } catch (err) {
+    console.error("GET SUBMISSION COMMENTS ERROR:", err);
+    res.status(500).json({ error: "Failed to load comments" });
+  }
+});
+
+/**
+ * POST /submissions/:id/comments
+ */
+router.post("/:id/comments", authMiddleware, async (req, res) => {
+  const submissionId = req.params.id;
+  const userId = (req as any).user?.id;
+  const { content, parent_id } = req.body;
+
+  if (!content?.trim()) {
+    return res.status(400).json({ error: "Content is required" });
+  }
+
+  try {
+    // Check if submission exists and get its activity_id
+    const subRes = await pool.query("SELECT activity_id, user_id FROM submissions WHERE id = $1", [submissionId]);
+    if (subRes.rows.length === 0) return res.status(404).json({ error: "Submission not found" });
+    const activityId = subRes.rows[0].activity_id;
+    const authorId = subRes.rows[0].user_id;
+
+    // Check if user has joined the activity (so they can comment)
+    const joinCheck = await pool.query("SELECT * FROM activity_members WHERE activity_id = $1 AND user_id = $2", [activityId, userId]);
+    if (joinCheck.rows.length === 0) {
+      // also check if they are the host
+      const hostCheck = await pool.query("SELECT host_id FROM activities WHERE id = $1", [activityId]);
+      if (hostCheck.rows.length === 0 || hostCheck.rows[0].host_id !== userId) {
+        return res.status(403).json({ error: "Must join activity to comment" });
+      }
+    }
+
+    const { rows } = await pool.query(
+      `INSERT INTO activity_comments (activity_id, submission_id, user_id, content, parent_id) 
+       VALUES ($1, $2, $3, $4, $5) RETURNING *`,
+      [activityId, submissionId, userId, content.trim(), parent_id || null]
+    );
+
+    // Fetch user details for the response
+    const userRes = await pool.query("SELECT name, username, profile_pic FROM users WHERE id = $1", [userId]);
+    const comment = {
+      ...rows[0],
+      user_name: userRes.rows[0].name,
+      user_username: userRes.rows[0].username,
+      user_pic: userRes.rows[0].profile_pic,
+      like_count: 0,
+      has_liked: false
+    };
+    
+    // Notify submission author if someone else comments
+    if (authorId !== userId) {
+      await pool.query(
+        `INSERT INTO notifications (user_id, sender_id, type, metadata) 
+         VALUES ($1, $2, 'activity_comment', $3)`,
+        [authorId, userId, JSON.stringify({ activity_id: activityId, submission_id: submissionId, comment_id: comment.id })]
+      );
+    }
+
+    res.json(comment);
+  } catch (err) {
+    console.error("POST SUBMISSION COMMENT ERROR:", err);
+    res.status(500).json({ error: "Failed to post comment" });
+  }
+});
+
 export default router;
