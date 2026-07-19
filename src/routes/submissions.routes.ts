@@ -27,17 +27,21 @@ if (!userId) {
 
     const submission = submissionResult.rows[0];
 
-    if (submission.user_id === userId) {
-      return res.status(400).json({ error: "Cannot vote your own submission" });
-    }
-
     const joinCheck = await pool.query(
       "SELECT * FROM activity_members WHERE activity_id = $1 AND user_id = $2",
       [submission.activity_id, userId]
     );
 
     if (joinCheck.rows.length === 0) {
-      return res.status(403).json({ error: "Join activity before voting" });
+      const actCheck = await pool.query("SELECT host_id, is_shared FROM activities WHERE id = $1", [submission.activity_id]);
+      if (actCheck.rows.length > 0) {
+        const act = actCheck.rows[0];
+        if (act.host_id !== userId && !act.is_shared) {
+          return res.status(403).json({ error: "Join activity before voting" });
+        }
+      } else {
+        return res.status(404).json({ error: "Activity not found" });
+      }
     }
 
     const existingVote = await pool.query(
@@ -241,10 +245,14 @@ router.post("/:id/comments", authMiddleware, async (req, res) => {
     // Check if user has joined the activity (so they can comment)
     const joinCheck = await pool.query("SELECT * FROM activity_members WHERE activity_id = $1 AND user_id = $2", [activityId, userId]);
     if (joinCheck.rows.length === 0) {
-      // also check if they are the host
-      const hostCheck = await pool.query("SELECT host_id FROM activities WHERE id = $1", [activityId]);
-      if (hostCheck.rows.length === 0 || hostCheck.rows[0].host_id !== userId) {
-        return res.status(403).json({ error: "Must join activity to comment" });
+      const actCheck = await pool.query("SELECT host_id, is_shared FROM activities WHERE id = $1", [activityId]);
+      if (actCheck.rows.length > 0) {
+        const act = actCheck.rows[0];
+        if (act.host_id !== userId && !act.is_shared) {
+          return res.status(403).json({ error: "Must join activity to comment" });
+        }
+      } else {
+        return res.status(404).json({ error: "Activity not found" });
       }
     }
 
