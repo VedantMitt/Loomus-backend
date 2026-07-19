@@ -605,9 +605,49 @@ router.post("/:id/comments", authMiddleware, async (req: any, res) => {
       `INSERT INTO activity_comments (activity_id, user_id, content, parent_id) VALUES ($1, $2, $3, $4) RETURNING *`,
       [activityId, userId, content.trim(), parent_id || null]
     );
+    const commentId = rows[0].id;
 
     // Fetch user info to return with comment
     const user = await pool.query(`SELECT name, username, profile_pic FROM users WHERE id = $1`, [userId]);
+
+    // ── NOTIFICATION LOGIC ──
+    const activityInfo = await pool.query(`SELECT host_id FROM activities WHERE id = $1`, [activityId]);
+    const hostId = activityInfo.rows[0]?.host_id;
+
+    if (parent_id) {
+      // Notify parent comment owner
+      const parentComment = await pool.query(`SELECT user_id FROM activity_comments WHERE id = $1`, [parent_id]);
+      const parentUserId = parentComment.rows[0]?.user_id;
+      if (parentUserId && parentUserId !== userId) {
+        await pool.query(
+          `INSERT INTO notifications (user_id, sender_id, type, metadata) VALUES ($1, $2, 'comment_reply', $3)`,
+          [parentUserId, userId, JSON.stringify({ activity_id: activityId, comment_id: commentId, parent_id })]
+        );
+      }
+    } else {
+      // Notify post host
+      if (hostId && hostId !== userId) {
+        await pool.query(
+          `INSERT INTO notifications (user_id, sender_id, type, metadata) VALUES ($1, $2, 'post_comment', $3)`,
+          [hostId, userId, JSON.stringify({ activity_id: activityId, comment_id: commentId })]
+        );
+      }
+    }
+
+    // Mention Notifications
+    const mentionRegex = /@([a-zA-Z0-9_]+)/g;
+    const mentions = [...content.matchAll(mentionRegex)].map(m => m[1]);
+    if (mentions.length > 0) {
+      const mentionedUsers = await pool.query(`SELECT id FROM users WHERE username = ANY($1)`, [mentions]);
+      for (const mentionedUser of mentionedUsers.rows) {
+        if (mentionedUser.id !== userId) {
+          await pool.query(
+            `INSERT INTO notifications (user_id, sender_id, type, metadata) VALUES ($1, $2, 'comment_mention', $3)`,
+            [mentionedUser.id, userId, JSON.stringify({ activity_id: activityId, comment_id: commentId })]
+          );
+        }
+      }
+    }
 
     res.json({ ...rows[0], ...user.rows[0] });
   } catch (err) {
@@ -628,6 +668,20 @@ router.post("/comments/:id/like", authMiddleware, async (req: any, res) => {
       `INSERT INTO comment_likes (comment_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
       [commentId, userId]
     );
+
+    // Notify comment owner
+    const commentInfo = await pool.query(`SELECT user_id, activity_id FROM activity_comments WHERE id = $1`, [commentId]);
+    if (commentInfo.rowCount > 0) {
+      const commentOwnerId = commentInfo.rows[0].user_id;
+      const activityId = commentInfo.rows[0].activity_id;
+      if (commentOwnerId !== userId) {
+        await pool.query(
+          `INSERT INTO notifications (user_id, sender_id, type, metadata) VALUES ($1, $2, 'comment_like', $3)`,
+          [commentOwnerId, userId, JSON.stringify({ activity_id: activityId, comment_id: commentId })]
+        );
+      }
+    }
+
     res.json({ message: "Comment liked" });
   } catch (err) {
     console.error("LIKE COMMENT ERROR:", err);
@@ -699,6 +753,19 @@ router.post("/:id/like", authMiddleware, async (req: any, res) => {
         `INSERT INTO activity_likes (activity_id, user_id) VALUES ($1, $2)`,
         [activityId, userId]
       );
+      
+      // Notify post host
+      const activityInfo = await pool.query(`SELECT host_id FROM activities WHERE id = $1`, [activityId]);
+      if (activityInfo.rowCount > 0) {
+        const hostId = activityInfo.rows[0].host_id;
+        if (hostId !== userId) {
+          await pool.query(
+            `INSERT INTO notifications (user_id, sender_id, type, metadata) VALUES ($1, $2, 'post_like', $3)`,
+            [hostId, userId, JSON.stringify({ activity_id: activityId })]
+          );
+        }
+      }
+
       return res.json({ liked: true });
     }
   } catch (err) {
