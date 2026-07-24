@@ -288,6 +288,19 @@ router.get("/:username", async (req, res) => {
 router.get("/:username/snaps", async (req, res) => {
   const { username } = req.params;
 
+  let currentUserId: string | null = null;
+  const authHeader = req.headers.authorization;
+  if (authHeader?.startsWith("Bearer ")) {
+    try {
+      const jwt = require("jsonwebtoken");
+      const decoded: any = jwt.verify(
+        authHeader.split(" ")[1],
+        process.env.JWT_SECRET as string
+      );
+      currentUserId = decoded.id;
+    } catch {}
+  }
+
   try {
     const { rows } = await pool.query(
       `
@@ -297,14 +310,17 @@ router.get("/:username/snaps", async (req, res) => {
         s.description,
         s.created_at,
         a.title AS activity_title,
-        a.id AS activity_id
+        a.id AS activity_id,
+        (SELECT COUNT(*) FROM votes v WHERE v.submission_id = s.id) AS vote_count,
+        EXISTS(SELECT 1 FROM votes v WHERE v.submission_id = s.id AND v.user_id = $2) AS has_voted,
+        (SELECT COUNT(*) FROM activity_comments ac WHERE ac.submission_id = s.id) AS comment_count
       FROM submissions s
       JOIN users u ON u.id = s.user_id
       LEFT JOIN activities a ON a.id = s.activity_id
       WHERE u.username = $1
       ORDER BY s.created_at DESC
       `,
-      [String(username).toLowerCase()]
+      [String(username).toLowerCase(), currentUserId]
     );
 
     res.json(rows);
