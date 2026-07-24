@@ -34,7 +34,7 @@ Give a very concise, friendly, and helpful suggestion (max 2 sentences).`;
 router.get("/hot-events", async (req, res) => {
   try {
     // 1. Try to fetch from daily scraped cache
-    const CACHE_FILE = path.join(__dirname, "../../../external_events.json");
+    const CACHE_FILE = path.join(process.cwd(), "external_events.json");
     if (fs.existsSync(CACHE_FILE)) {
       try {
         const data = JSON.parse(fs.readFileSync(CACHE_FILE, "utf-8"));
