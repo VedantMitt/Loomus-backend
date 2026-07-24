@@ -57,4 +57,25 @@ router.put("/:id/read", authMiddleware, async (req: AuthRequest, res) => {
   }
 });
 
+// 🔹 MARK ALL NOTIFICATIONS AS READ 🔹
+router.put("/read-all", authMiddleware, async (req: AuthRequest, res) => {
+  const currentUserId = req.user?.id;
+
+  if (!currentUserId) {
+    return res.status(401).json({ error: "Unauthorized" });
+  }
+
+  try {
+    await pool.query(
+      `UPDATE notifications SET is_read = TRUE WHERE user_id = $1`,
+      [currentUserId]
+    );
+
+    res.json({ message: "All notifications marked as read" });
+  } catch (err) {
+    console.error("MARK ALL READ ERROR:", err);
+    res.status(500).json({ error: "Failed to mark all notifications as read" });
+  }
+});
+
 export default router;
