@@ -318,6 +318,11 @@ router.get("/:username/snaps", async (req, res) => {
       JOIN users u ON u.id = s.user_id
       LEFT JOIN activities a ON a.id = s.activity_id
       WHERE u.username = $1
+        AND (u.is_private = FALSE OR u.id = $2 OR EXISTS (
+          SELECT 1 FROM friends f 
+          WHERE ((f.user_id1 = u.id AND f.user_id2 = $2) OR (f.user_id2 = u.id AND f.user_id1 = $2))
+          AND f.status = 'accepted'
+        ))
       ORDER BY s.created_at DESC
       `,
       [String(username).toLowerCase(), currentUserId]
@@ -358,6 +363,13 @@ router.get("/:username/chapters", optionalAuthMiddleware, async (req: AuthReques
         AND a.deleted_at IS NULL 
         AND a.is_chapter_deleted = false 
         AND a.date < NOW()
+        AND (
+          u.is_private = FALSE OR u.id = $2 OR EXISTS (
+            SELECT 1 FROM friends f 
+            WHERE ((f.user_id1 = u.id AND f.user_id2 = $2) OR (f.user_id2 = u.id AND f.user_id1 = $2))
+            AND f.status = 'accepted'
+          )
+        )
         AND (
           a.is_public = true 
           OR a.host_id = $2
