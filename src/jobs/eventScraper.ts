@@ -64,7 +64,7 @@ export async function scrapeExternalEvents() {
     // We use gemini-1.5-pro as it has superior search capabilities
     const model = genAI.getGenerativeModel({ 
       model: "gemini-1.5-pro",
-      tools: [{ googleSearch: {} }] // Enable Google Search Grounding
+      tools: [{ googleSearch: {} } as any] // Enable Google Search Grounding
     });
 
     const prompt = `
