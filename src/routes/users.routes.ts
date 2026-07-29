@@ -364,7 +364,7 @@ router.get("/:username/chapters", optionalAuthMiddleware, async (req: AuthReques
         AND a.is_chapter_deleted = false 
         AND a.date < NOW()
         AND (
-          u.is_private = FALSE OR u.id = $2 OR EXISTS (
+          u.is_private IS NOT TRUE OR u.id = $2 OR EXISTS (
             SELECT 1 FROM friends f 
             WHERE ((f.user_id1 = u.id AND f.user_id2 = $2) OR (f.user_id2 = u.id AND f.user_id1 = $2))
             AND f.status = 'accepted'

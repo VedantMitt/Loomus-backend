@@ -267,7 +267,12 @@ router.get("/feed/shared", authMiddleware, async (req: any, res) => {
         AND (
           a.host_id = $1
           OR EXISTS (SELECT 1 FROM activity_members am WHERE am.activity_id = a.id AND am.user_id = $1)
-          OR a.is_public = TRUE
+          OR (u.is_private IS NOT TRUE AND a.is_public = TRUE)
+          OR EXISTS (
+            SELECT 1 FROM friends f 
+            WHERE ((f.user_id1 = u.id AND f.user_id2 = $1) OR (f.user_id2 = u.id AND f.user_id1 = $1)) 
+            AND f.status = 'accepted'
+          )
         )
       ORDER BY has_seen ASC, a.shared_at DESC NULLS LAST
       LIMIT 20
