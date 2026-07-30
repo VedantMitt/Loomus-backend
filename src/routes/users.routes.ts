@@ -429,6 +429,7 @@ router.put("/:id", authMiddleware, async (req: AuthRequest, res) => {
         let val = req.body[field];
         if (field === "username") val = val?.toLowerCase();
         if ((field === "interests" || field === "vibe_tags") && !val) val = [];
+        if (field === "dob" && !val) val = null;
         
         updates.push(`${field} = $${idx}`);
         values.push(val);
