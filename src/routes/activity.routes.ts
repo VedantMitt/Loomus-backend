@@ -8,11 +8,15 @@ const router = Router();
 // GET /activities/places/autocomplete — location suggestions
 // ─────────────────────────────────────────────
 router.get("/places/autocomplete", authMiddleware, async (req, res) => {
-  const { q } = req.query;
+  const { q, lat, lon } = req.query;
   if (!q) return res.json([]);
   try {
     if (process.env.GOOGLE_MAPS_API_KEY) {
-      const resp = await fetch(`https://maps.googleapis.com/maps/api/place/autocomplete/json?input=${encodeURIComponent(q as string)}&key=${process.env.GOOGLE_MAPS_API_KEY}`);
+      let url = `https://maps.googleapis.com/maps/api/place/autocomplete/json?input=${encodeURIComponent(q as string)}&key=${process.env.GOOGLE_MAPS_API_KEY}`;
+      if (lat && lon) {
+        url += `&location=${lat}%2C${lon}&radius=50000`;
+      }
+      const resp = await fetch(url);
       const data = await resp.json();
       if (data.predictions) {
         return res.json(data.predictions.map((p: any) => ({
