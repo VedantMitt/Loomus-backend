@@ -58,6 +58,11 @@ router.get("/", authMiddleware, async (req: any, res) => {
       conditions.push(`NOT EXISTS (SELECT 1 FROM hidden_activities ha WHERE ha.activity_id = a.id AND ha.user_id = $1)`);
     } else {
       conditions.push("a.is_loom_deleted = false");
+      conditions.push(`(
+        a.is_public = TRUE 
+        OR a.host_id = $1 
+        OR EXISTS (SELECT 1 FROM activity_members am WHERE am.activity_id = a.id AND am.user_id = $1)
+      )`);
     }
 
     if (is_public === "true") {
@@ -221,7 +226,7 @@ router.get("/top", authMiddleware, async (req: any, res) => {
         (SELECT COUNT(*) FROM activity_rsvps r WHERE r.activity_id = a.id AND r.status = 'interested') AS interested_count
       FROM activities a
       JOIN users u ON u.id = a.host_id
-      WHERE a.deleted_at IS NULL AND a.date > NOW() - INTERVAL '24 hours'
+      WHERE a.deleted_at IS NULL AND a.date > NOW() - INTERVAL '24 hours' AND a.is_public = TRUE
       ORDER BY going_count DESC, a.date ASC
       LIMIT 10
     `);
@@ -267,11 +272,15 @@ router.get("/feed/shared", authMiddleware, async (req: any, res) => {
         AND (
           a.host_id = $1
           OR EXISTS (SELECT 1 FROM activity_members am WHERE am.activity_id = a.id AND am.user_id = $1)
-          OR (u.is_private IS NOT TRUE AND a.is_public = TRUE)
-          OR EXISTS (
-            SELECT 1 FROM friends f 
-            WHERE ((f.user_id1 = u.id AND f.user_id2 = $1) OR (f.user_id2 = u.id AND f.user_id1 = $1)) 
-            AND f.status = 'accepted'
+          OR (
+            a.is_public = TRUE AND (
+              u.is_private IS NOT TRUE 
+              OR EXISTS (
+                SELECT 1 FROM friends f 
+                WHERE ((f.user_id1 = u.id AND f.user_id2 = $1) OR (f.user_id2 = u.id AND f.user_id1 = $1)) 
+                AND f.status = 'accepted'
+              )
+            )
           )
         )
       ORDER BY has_seen ASC, a.shared_at DESC NULLS LAST
