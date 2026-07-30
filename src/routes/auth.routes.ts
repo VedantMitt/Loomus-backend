@@ -86,8 +86,8 @@ router.post("/google", async (req, res) => {
       { expiresIn: "7d" }
     );
 
-    // If username is auto-generated or year is missing, tell the frontend to prompt for details
-    const needsCompletion = !user.username || user.username.startsWith("user_") || !user.year;
+    // If username is auto-generated, tell the frontend to prompt for details
+    const needsCompletion = !user.username || user.username.startsWith("user_");
 
     res.json({ 
       token, 
