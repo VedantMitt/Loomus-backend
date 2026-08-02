@@ -104,40 +104,127 @@ router.get("/", async (req, res) => {
   }
 });
 
+router.get("/reverse", async (req, res) => {
+  try {
+    const { lat, lng } = req.query;
+    if (!lat || !lng) {
+      return res.status(400).json({ error: "lat and lng are required" });
+    }
+
+    const apiKey = process.env.GEOAPIFY_API_KEY;
+    if (apiKey) {
+      try {
+        const geoapifyUrl = `https://api.geoapify.com/v1/geocode/reverse?lat=${lat}&lon=${lng}&format=json&apiKey=${apiKey}`;
+        const response = await fetch(geoapifyUrl, { headers: { Accept: "application/json" } });
+        if (response.ok) {
+          const data: any = await response.json();
+          if (data.results && data.results.length > 0) {
+            const r = data.results[0];
+            const city = r.city || r.suburb || r.county || r.state || r.country || "Nearby";
+            const neighborhood = r.suburb || r.neighbourhood || r.district || "";
+            const displayName = neighborhood && city !== neighborhood ? `${neighborhood}, ${city}` : (r.city || r.name || r.formatted);
+            return res.json({
+              name: displayName,
+              city: city,
+              formatted: r.formatted,
+              lat: Number(r.lat),
+              lng: Number(r.lon)
+            });
+          }
+        }
+      } catch (e) {
+        console.warn("Geoapify reverse geocode failed, falling back to OSM", e);
+      }
+    }
+
+    // OpenStreetMap Nominatim Fallback
+    try {
+      const osmUrl = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=14&addressdetails=1`;
+      const osmRes = await fetch(osmUrl, {
+        headers: { "User-Agent": "LoomusApp/1.0 (contact@loomus.app)" }
+      });
+      if (osmRes.ok) {
+        const osmData: any = await osmRes.json();
+        const addr = osmData.address || {};
+        const city = addr.city || addr.town || addr.suburb || addr.county || addr.state || "Nearby";
+        const neighborhood = addr.suburb || addr.neighbourhood || addr.residential || "";
+        const displayName = neighborhood && city !== neighborhood ? `${neighborhood}, ${city}` : (city || osmData.display_name);
+        return res.json({
+          name: displayName,
+          city: city,
+          formatted: osmData.display_name,
+          lat: Number(osmData.lat),
+          lng: Number(osmData.lon)
+        });
+      }
+    } catch (osmErr) {
+      console.warn("OSM reverse geocode failed:", osmErr);
+    }
+
+    return res.json({
+      name: "Current Location",
+      city: "Current Location",
+      formatted: "Current Location",
+      lat: Number(lat),
+      lng: Number(lng)
+    });
+  } catch (error) {
+    console.error("Error in reverse geocoding:", error);
+    res.status(500).json({ error: "Failed to reverse geocode" });
+  }
+});
+
 router.get("/search", async (req, res) => {
   try {
     const { q } = req.query;
-    const apiKey = process.env.GEOAPIFY_API_KEY;
-
-    if (!apiKey) {
-      return res.status(500).json({ error: "GEOAPIFY_API_KEY is missing" });
-    }
     if (!q || typeof q !== "string") {
       return res.status(400).json({ error: "Search query 'q' is required" });
     }
 
-    const geoapifyUrl = `https://api.geoapify.com/v1/geocode/search?text=${encodeURIComponent(q)}&format=json&limit=1&apiKey=${apiKey}`;
-    
-    const response = await fetch(geoapifyUrl, {
-      method: "GET",
-      headers: { "Accept": "application/json" }
-    });
-
-    if (!response.ok) {
-      throw new Error(`Failed to fetch from Geoapify Geocoding: ${response.status}`);
+    const apiKey = process.env.GEOAPIFY_API_KEY;
+    if (apiKey) {
+      try {
+        const geoapifyUrl = `https://api.geoapify.com/v1/geocode/search?text=${encodeURIComponent(q)}&format=json&limit=1&apiKey=${apiKey}`;
+        const response = await fetch(geoapifyUrl, { headers: { Accept: "application/json" } });
+        if (response.ok) {
+          const data: any = await response.json();
+          if (data.results && data.results.length > 0) {
+            const result = data.results[0];
+            return res.json({
+              lat: result.lat,
+              lng: result.lon,
+              name: result.city || result.name || result.formatted
+            });
+          }
+        }
+      } catch (e) {
+        console.warn("Geoapify search failed, falling back to OSM", e);
+      }
     }
 
-    const data: any = await response.json();
-    if (data.results && data.results.length > 0) {
-      const result = data.results[0];
-      res.json({
-        lat: result.lat,
-        lng: result.lon,
-        name: result.city || result.name || result.formatted
+    // Fallback: OpenStreetMap Nominatim
+    try {
+      const osmUrl = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&format=json&limit=1&addressdetails=1`;
+      const osmRes = await fetch(osmUrl, {
+        headers: { "User-Agent": "LoomusApp/1.0 (contact@loomus.app)" }
       });
-    } else {
-      res.status(404).json({ error: "Location not found" });
+      if (osmRes.ok) {
+        const results: any = await osmRes.json();
+        if (results && results.length > 0) {
+          const r = results[0];
+          const addr = r.address || {};
+          return res.json({
+            lat: parseFloat(r.lat),
+            lng: parseFloat(r.lon),
+            name: addr.city || addr.town || addr.suburb || r.display_name
+          });
+        }
+      }
+    } catch (osmErr) {
+      console.warn("OSM search failed:", osmErr);
     }
+
+    res.status(404).json({ error: "Location not found" });
   } catch (error) {
     console.error("Error searching location:", error);
     res.status(500).json({ error: "Failed to search location" });
@@ -146,40 +233,112 @@ router.get("/search", async (req, res) => {
 
 router.get("/autocomplete", async (req, res) => {
   try {
-    const { q } = req.query;
-    const apiKey = process.env.GEOAPIFY_API_KEY;
-
-    if (!apiKey) {
-      return res.status(500).json({ error: "GEOAPIFY_API_KEY is missing" });
-    }
-    if (!q || typeof q !== "string") {
+    const { q, lat, lng, lon } = req.query;
+    if (!q || typeof q !== "string" || !q.trim()) {
       return res.json({ suggestions: [] });
     }
 
-    const geoapifyUrl = `https://api.geoapify.com/v1/geocode/autocomplete?text=${encodeURIComponent(q)}&format=json&limit=5&apiKey=${apiKey}`;
-    
-    const response = await fetch(geoapifyUrl, {
-      method: "GET",
-      headers: { "Accept": "application/json" }
+    const query = q.trim();
+    const latitude = lat ? Number(lat) : undefined;
+    const longitude = (lng || lon) ? Number(lng || lon) : undefined;
+    const apiKey = process.env.GEOAPIFY_API_KEY;
+
+    let suggestions: any[] = [];
+
+    // 1. Try Geoapify Autocomplete
+    if (apiKey) {
+      try {
+        let geoapifyUrl = `https://api.geoapify.com/v1/geocode/autocomplete?text=${encodeURIComponent(query)}&format=json&limit=6&apiKey=${apiKey}`;
+        if (latitude && longitude) {
+          geoapifyUrl += `&bias=proximity:${longitude},${latitude}`;
+        }
+        
+        const response = await fetch(geoapifyUrl, { headers: { Accept: "application/json" } });
+        if (response.ok) {
+          const data: any = await response.json();
+          if (data.results && data.results.length > 0) {
+            suggestions = data.results.map((r: any) => ({
+              lat: r.lat,
+              lng: r.lon,
+              name: r.city || r.name || r.formatted,
+              full_address: r.formatted,
+              category: r.category || r.result_type
+            }));
+          }
+        }
+      } catch (e) {
+        console.warn("Geoapify autocomplete error, trying Photon fallback", e);
+      }
+    }
+
+    // 2. Fallback to Photon (Free OpenStreetMap-powered geocoding engine)
+    if (suggestions.length === 0) {
+      try {
+        let photonUrl = `https://photon.komoot.io/api/?q=${encodeURIComponent(query)}&limit=6`;
+        if (latitude && longitude) {
+          photonUrl += `&lat=${latitude}&lon=${longitude}`;
+        }
+        const photonRes = await fetch(photonUrl, { headers: { Accept: "application/json" } });
+        if (photonRes.ok) {
+          const photonData: any = await photonRes.json();
+          if (photonData.features && photonData.features.length > 0) {
+            suggestions = photonData.features.map((f: any) => {
+              const p = f.properties;
+              const coords = f.geometry.coordinates; // [lng, lat]
+              const nameParts = [p.name, p.district, p.city, p.state, p.country].filter(Boolean);
+              const name = p.name || p.city || nameParts[0] || query;
+              const full_address = nameParts.filter((v, i, a) => a.indexOf(v) === i).join(", ");
+              return {
+                lat: coords[1],
+                lng: coords[0],
+                name: name,
+                full_address: full_address
+              };
+            });
+          }
+        }
+      } catch (photonErr) {
+        console.warn("Photon fallback failed, trying Nominatim", photonErr);
+      }
+    }
+
+    // 3. Fallback to Nominatim
+    if (suggestions.length === 0) {
+      try {
+        const osmUrl = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=6&addressdetails=1`;
+        const osmRes = await fetch(osmUrl, {
+          headers: { "User-Agent": "LoomusApp/1.0 (contact@loomus.app)" }
+        });
+        if (osmRes.ok) {
+          const osmResults: any = await osmRes.json();
+          if (osmResults && osmResults.length > 0) {
+            suggestions = osmResults.map((r: any) => {
+              const addr = r.address || {};
+              const name = addr.city || addr.town || addr.suburb || addr.neighbourhood || r.name || r.display_name.split(",")[0];
+              return {
+                lat: parseFloat(r.lat),
+                lng: parseFloat(r.lon),
+                name: name,
+                full_address: r.display_name
+              };
+            });
+          }
+        }
+      } catch (osmErr) {
+        console.warn("Nominatim fallback failed:", osmErr);
+      }
+    }
+
+    // Deduplicate by name and full_address
+    const seen = new Set<string>();
+    const deduplicated = suggestions.filter((s: any) => {
+      const key = `${s.name}_${s.lat.toFixed(3)}_${s.lng.toFixed(3)}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
     });
 
-    if (!response.ok) {
-      throw new Error(`Failed to fetch from Geoapify Autocomplete: ${response.status}`);
-    }
-
-    const data: any = await response.json();
-    if (data.results && data.results.length > 0) {
-      const suggestions = data.results.map((r: any) => ({
-        lat: r.lat,
-        lng: r.lon,
-        name: r.city || r.name || r.formatted,
-        full_address: r.formatted
-      })).filter((v: any, i: number, a: any[]) => a.findIndex(t => (t.name === v.name)) === i); // basic dedupe
-
-      res.json({ suggestions });
-    } else {
-      res.json({ suggestions: [] });
-    }
+    res.json({ suggestions: deduplicated });
   } catch (error) {
     console.error("Error autocompleting location:", error);
     res.status(500).json({ error: "Failed to autocomplete" });

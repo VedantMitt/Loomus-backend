@@ -33,10 +33,26 @@ const allowedOrigins = (process.env.CORS_ORIGIN || "http://localhost:3000")
 
 app.use(cors({
   origin: (origin, callback) => {
-    // Allow requests with no origin (mobile apps, curl, etc)
-    if (!origin || allowedOrigins.includes(origin) || origin === "http://localhost" || origin === "capacitor://localhost" || origin.startsWith("http://192.168.") || origin === "http://10.0.2.2:3000") {
+    // Allow requests with no origin (mobile native apps, curl, postman)
+    if (!origin) return callback(null, true);
+
+    if (allowedOrigins.includes(origin)) return callback(null, true);
+
+    // Allow all Vercel deployments, localhost, local networks, and mobile capacitor schemes
+    const isAllowed = 
+      origin.includes("vercel.app") ||
+      origin.startsWith("http://localhost") ||
+      origin.startsWith("https://localhost") ||
+      origin.startsWith("capacitor://") ||
+      origin.startsWith("ionic://") ||
+      origin.startsWith("http://192.168.") ||
+      origin.startsWith("http://10.0.2.2") ||
+      origin.startsWith("http://127.0.0.1");
+
+    if (isAllowed) {
       callback(null, true);
     } else {
+      console.warn("⚠️ Blocked by CORS:", origin);
       callback(new Error("Not allowed by CORS: " + origin));
     }
   },
