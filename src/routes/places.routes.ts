@@ -345,4 +345,35 @@ router.get("/autocomplete", async (req, res) => {
   }
 });
 
+router.get("/ip-location", async (req, res) => {
+  try {
+    let clientIp = req.headers["x-forwarded-for"] || req.socket.remoteAddress || "";
+    if (Array.isArray(clientIp)) clientIp = clientIp[0];
+    if (typeof clientIp === "string" && clientIp.includes(",")) {
+      clientIp = clientIp.split(",")[0].trim();
+    }
+
+    const isLocal = !clientIp || clientIp === "::1" || clientIp.startsWith("127.") || clientIp.startsWith("192.168.") || clientIp.startsWith("10.");
+    const url = isLocal ? "http://ip-api.com/json" : `http://ip-api.com/json/${clientIp}`;
+
+    const ipRes = await fetch(url, { headers: { Accept: "application/json" } });
+    if (ipRes.ok) {
+      const data: any = await ipRes.json();
+      if (data && data.status === "success") {
+        return res.json({
+          name: `${data.city || data.regionName}, ${data.country}`,
+          city: data.city || data.regionName,
+          lat: data.lat,
+          lng: data.lon,
+        });
+      }
+    }
+
+    res.status(404).json({ error: "Could not resolve IP location" });
+  } catch (err) {
+    console.error("IP location error:", err);
+    res.status(500).json({ error: "Failed to get IP location" });
+  }
+});
+
 export default router;
