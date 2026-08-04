@@ -345,6 +345,82 @@ router.get("/autocomplete", async (req, res) => {
   }
 });
 
+router.get("/reverse", async (req, res) => {
+  try {
+    const { lat, lng } = req.query;
+    if (!lat || !lng) {
+      return res.status(400).json({ error: "lat and lng are required" });
+    }
+
+    const latitude = parseFloat(lat as string);
+    const longitude = parseFloat(lng as string);
+
+    // 1. Try Geoapify Reverse Geocode if API key is configured
+    const apiKey = process.env.GEOAPIFY_API_KEY;
+    if (apiKey) {
+      try {
+        const geoUrl = `https://api.geoapify.com/v1/geocode/reverse?lat=${latitude}&lon=${longitude}&apiKey=${apiKey}`;
+        const geoRes = await fetch(geoUrl);
+        if (geoRes.ok) {
+          const data: any = await geoRes.json();
+          if (data && data.features && data.features.length > 0) {
+            const props = data.features[0].properties;
+            const city = props.city || props.town || props.county || props.state || "";
+            const neighborhood = props.suburb || props.district || props.neighbourhood || props.street || "";
+            const name = neighborhood && city && neighborhood !== city ? `${neighborhood}, ${city}` : (city || props.formatted || "Current Location");
+            return res.json({
+              name,
+              city: city || name,
+              formatted: props.formatted || name,
+              lat: latitude,
+              lng: longitude,
+            });
+          }
+        }
+      } catch (geoErr) {
+        console.warn("Geoapify reverse geocode failed, trying OSM Nominatim:", geoErr);
+      }
+    }
+
+    // 2. Try OpenStreetMap Nominatim reverse geocode
+    try {
+      const osmUrl = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}&zoom=18&addressdetails=1`;
+      const osmRes = await fetch(osmUrl, {
+        headers: { "User-Agent": "LoomusApp/1.0 (contact@loomus.app)" }
+      });
+      if (osmRes.ok) {
+        const data: any = await osmRes.json();
+        if (data && data.address) {
+          const addr = data.address;
+          const city = addr.city || addr.town || addr.village || addr.county || addr.state || "";
+          const locality = addr.suburb || addr.neighbourhood || addr.quarter || addr.residential || addr.road || "";
+          const name = locality && city && locality !== city ? `${locality}, ${city}` : (locality || city || data.display_name.split(",")[0] || "Current Location");
+          return res.json({
+            name,
+            city: city || name,
+            formatted: data.display_name,
+            lat: latitude,
+            lng: longitude,
+          });
+        }
+      }
+    } catch (osmErr) {
+      console.warn("OSM Nominatim reverse geocode failed:", osmErr);
+    }
+
+    // Fallback response with coordinates
+    res.json({
+      name: "Current Location",
+      city: "Current Location",
+      lat: latitude,
+      lng: longitude,
+    });
+  } catch (err) {
+    console.error("Reverse geocoding error:", err);
+    res.status(500).json({ error: "Failed to reverse geocode" });
+  }
+});
+
 router.get("/ip-location", async (req, res) => {
   try {
     let clientIp = req.headers["x-forwarded-for"] || req.socket.remoteAddress || "";
@@ -354,20 +430,59 @@ router.get("/ip-location", async (req, res) => {
     }
 
     const isLocal = !clientIp || clientIp === "::1" || clientIp.startsWith("127.") || clientIp.startsWith("192.168.") || clientIp.startsWith("10.");
-    const url = isLocal ? "http://ip-api.com/json" : `http://ip-api.com/json/${clientIp}`;
 
-    const ipRes = await fetch(url, { headers: { Accept: "application/json" } });
-    if (ipRes.ok) {
-      const data: any = await ipRes.json();
-      if (data && data.status === "success") {
-        return res.json({
-          name: `${data.city || data.regionName}, ${data.country}`,
-          city: data.city || data.regionName,
-          lat: data.lat,
-          lng: data.lon,
-        });
+    // 1. Try ip-api.com
+    try {
+      const url = isLocal ? "http://ip-api.com/json" : `http://ip-api.com/json/${clientIp}`;
+      const ipRes = await fetch(url, { headers: { Accept: "application/json" } });
+      if (ipRes.ok) {
+        const data: any = await ipRes.json();
+        if (data && data.status === "success" && typeof data.lat === "number" && typeof data.lon === "number") {
+          return res.json({
+            name: `${data.city || data.regionName}, ${data.country}`,
+            city: data.city || data.regionName,
+            lat: data.lat,
+            lng: data.lon,
+          });
+        }
       }
-    }
+    } catch (e) {}
+
+    // 2. Fallback to ipwho.is
+    try {
+      const url = isLocal ? "https://ipwho.is/" : `https://ipwho.is/${clientIp}`;
+      const ipRes = await fetch(url, { headers: { Accept: "application/json" } });
+      if (ipRes.ok) {
+        const data: any = await ipRes.json();
+        if (data && data.success !== false && typeof data.latitude === "number" && typeof data.longitude === "number") {
+          const city = data.city || data.region || data.country || "Nearby";
+          const region = data.region || data.country || "";
+          return res.json({
+            name: region && city !== region ? `${city}, ${region}` : city,
+            city: city,
+            lat: data.latitude,
+            lng: data.longitude,
+          });
+        }
+      }
+    } catch (e) {}
+
+    // 3. Fallback to freeipapi.com
+    try {
+      const url = isLocal ? "https://freeipapi.com/api/json" : `https://freeipapi.com/api/json/${clientIp}`;
+      const ipRes = await fetch(url, { headers: { Accept: "application/json" } });
+      if (ipRes.ok) {
+        const data: any = await ipRes.json();
+        if (data && typeof data.latitude === "number" && typeof data.longitude === "number") {
+          return res.json({
+            name: data.cityName ? `${data.cityName}, ${data.countryName}` : "Nearby",
+            city: data.cityName || "Nearby",
+            lat: data.latitude,
+            lng: data.longitude,
+          });
+        }
+      }
+    } catch (e) {}
 
     res.status(404).json({ error: "Could not resolve IP location" });
   } catch (err) {
