@@ -170,6 +170,18 @@ router.get("/", authMiddleware, async (req: any, res) => {
       ) my ON my.activity_id = a.id`;
     }
 
+    // User location prioritization
+    const userLocParam = ((req.query.location || req.query.user_location || "") as string).trim();
+    let locMatchKeyword = "";
+    if (userLocParam) {
+      // Pick first city / locality token e.g. "Mumbai" from "Mumbai, Maharashtra"
+      locMatchKeyword = userLocParam.split(",")[0].trim();
+    }
+
+    params.push(locMatchKeyword);
+    const locParamIdx = paramIdx;
+    paramIdx++;
+
     const whereStr = conditions.length > 0 ? "WHERE " + conditions.join(" AND ") : "";
 
     const { rows } = await pool.query(
@@ -204,6 +216,10 @@ router.get("/", authMiddleware, async (req: any, res) => {
       ${whereStr}
       GROUP BY a.id, u.name, u.username, u.profile_pic
       ORDER BY
+        CASE 
+          WHEN $${locParamIdx} <> '' AND LOWER(a.location) LIKE LOWER('%' || $${locParamIdx} || '%') THEN 0 
+          ELSE 1 
+        END,
         CASE WHEN a.date > NOW() THEN 0 ELSE 1 END,
         ABS(EXTRACT(EPOCH FROM (a.date - NOW()))) ASC
       `,
