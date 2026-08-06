@@ -38,9 +38,13 @@ router.post("/google", async (req, res) => {
   }
 
   try {
-    const ticket = await client.verifyIdToken({
+    const defaultClientId = "179896098236-k92cj68fkliirf291ruuu6sk6rp1e7q4.apps.googleusercontent.com";
+    const clientId = process.env.GOOGLE_CLIENT_ID || defaultClientId;
+    const googleClient = new OAuth2Client(clientId);
+
+    const ticket = await googleClient.verifyIdToken({
       idToken: credential,
-      audience: process.env.GOOGLE_CLIENT_ID,
+      audience: [clientId, defaultClientId],
     });
 
     const payload = ticket.getPayload();
@@ -51,11 +55,9 @@ router.post("/google", async (req, res) => {
     const { email, name, picture } = payload;
     const cleanEmail = email.toLowerCase().trim();
 
-    // Allow all emails
-
     // Check if user already exists
     const result = await pool.query(
-      "SELECT id, name, email, username, college, year, profile_pic FROM users WHERE email = $1",
+      "SELECT id, name, email, username, college, year, profile_pic, is_verified FROM users WHERE email = $1",
       [cleanEmail]
     );
 
@@ -64,16 +66,20 @@ router.post("/google", async (req, res) => {
 
     if (result.rows.length > 0) {
       user = result.rows[0];
+      if (!user.is_verified) {
+        await pool.query("UPDATE users SET is_verified = TRUE WHERE id = $1", [user.id]);
+        user.is_verified = true;
+      }
     } else {
       // Create a skeleton user for social login
-      const college = cleanEmail.split("@")[1].split(".")[0].toUpperCase();
+      const college = cleanEmail.split("@")[1]?.split(".")[0]?.toUpperCase() || "CAMPUS";
       const tmpUsername = `user_${Date.now()}${Math.floor(Math.random()*1000)}`;
 
       const insertResult = await pool.query(
         `INSERT INTO users (name, email, username, profile_pic, college, is_verified, is_external)
          VALUES ($1, $2, $3, $4, $5, TRUE, FALSE)
-         RETURNING id, name, email, username, college, year, profile_pic`,
-        [name, cleanEmail, tmpUsername, picture, college]
+         RETURNING id, name, email, username, college, year, profile_pic, is_verified`,
+        [name || "Loomus User", cleanEmail, tmpUsername, picture || null, college]
       );
       user = insertResult.rows[0];
       isNewUser = true;
@@ -82,7 +88,7 @@ router.post("/google", async (req, res) => {
     // Generate JWT
     const token = jwt.sign(
       { id: user.id, email: user.email, username: user.username },
-      process.env.JWT_SECRET as string,
+      (process.env.JWT_SECRET as string) || "fallback_secret",
       { expiresIn: "7d" }
     );
 
