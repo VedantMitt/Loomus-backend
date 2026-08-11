@@ -16,6 +16,8 @@ function getTransporter() {
 }
 
 export const sendOTPEmail = async (to: string, otp: string) => {
+  const cleanTo = to.toLowerCase().trim();
+
   // 1. Primary Method: Gmail SMTP
   const mailer = getTransporter();
   if (mailer) {
