@@ -18,33 +18,36 @@ function getTransporter() {
 export const sendOTPEmail = async (to: string, otp: string) => {
   const cleanTo = to.toLowerCase().trim();
 
-  // 1. Primary Method: Gmail SMTP
-  const mailer = getTransporter();
-  if (mailer) {
-    try {
-      console.log(`[Loomus] Attempting to send OTP via Gmail to ${cleanTo}...`);
-      await mailer.sendMail({
-        from: `"Loomus" <${process.env.EMAIL_USER}>`,
+  // 1. Primary Method: Proxy via Vercel (bypasses Render SMTP block)
+  try {
+    console.log(`[Loomus] Attempting to send OTP via Vercel API to ${cleanTo}...`);
+    
+    // Default to the vercel domain, but allow override
+    const FRONTEND_URL = process.env.CORS_ORIGIN?.split(',')[0].includes('localhost') 
+      ? 'https://loomusapp.vercel.app' 
+      : (process.env.CORS_ORIGIN?.split(',').find(o => o.includes('vercel.app')) || 'https://loomusapp.vercel.app');
+
+    const response = await fetch(`${FRONTEND_URL}/api/send-email`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
         to: cleanTo,
-        subject: "Verify your Loomus account",
-        html: `
-          <div style="font-family: sans-serif; max-width: 400px; margin: 0 auto; padding: 20px; background: #0a0a0a; color: #ffffff; border-radius: 12px;">
-            <h2 style="color: #3b82f6; margin-bottom: 8px;">Loomus</h2>
-            <p style="color: #a0a0a0; font-size: 14px;">Your verification code is:</p>
-            <div style="font-size: 36px; font-weight: bold; letter-spacing: 8px; color: #3b82f6; padding: 20px 0; text-align: center;">
-              ${otp}
-            </div>
-            <p style="color: #666; font-size: 12px;">This code expires in <strong>10 minutes</strong>.</p>
-          </div>
-        `,
-      });
-      console.log(`✅ [Gmail] OTP successfully sent to ${cleanTo}`);
+        otp: otp,
+        secret: process.env.EMAIL_API_SECRET || "super-secret-loomus-key",
+      }),
+    });
+
+    if (response.ok) {
+      console.log(`✅ [Vercel API] OTP successfully sent to ${cleanTo}`);
       return;
-    } catch (mailErr: any) {
-      console.error("❌ Gmail SMTP send failed:", mailErr);
     }
-  } else {
-    console.error("❌ Gmail SMTP is NOT configured! Missing EMAIL_USER or EMAIL_PASS in environment variables.");
+    
+    const errorData = await response.json();
+    console.error("❌ Vercel API send failed:", errorData);
+  } catch (err: any) {
+    console.error("❌ Vercel API request error:", err.message);
   }
 
   // 2. Fallback / Dev Mode log
