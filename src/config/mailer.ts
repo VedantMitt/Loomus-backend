@@ -17,26 +17,22 @@ function getTransporter() {
 
 export const sendOTPEmail = async (to: string, otp: string) => {
   const cleanTo = to.toLowerCase().trim();
-  const BREVO_API_KEY = process.env.BREVO_API_KEY;
+  const RESEND_API_KEY = process.env.RESEND_API_KEY;
 
-  // 1. Try Brevo if API key is provided
-  if (BREVO_API_KEY) {
+  // 1. Try Resend if API key is provided
+  if (RESEND_API_KEY) {
     try {
-      const response = await fetch("https://api.brevo.com/v3/smtp/email", {
+      const response = await fetch("https://api.resend.com/emails", {
         method: "POST",
         headers: {
-          accept: "application/json",
-          "api-key": BREVO_API_KEY,
-          "content-type": "application/json",
+          Authorization: `Bearer ${RESEND_API_KEY}`,
+          "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          sender: {
-            name: "Loomus",
-            email: process.env.EMAIL_USER || "noreply@loomus.app",
-          },
-          to: [{ email: cleanTo }],
+          from: "Loomus <onboarding@resend.dev>", // Resend test email
+          to: [cleanTo],
           subject: "Verify your Loomus account",
-          htmlContent: `
+          html: `
             <div style="font-family: sans-serif; max-width: 400px; margin: 0 auto; padding: 20px; background: #0a0a0a; color: #ffffff; border-radius: 12px;">
               <h2 style="color: #3b82f6; margin-bottom: 8px;">Loomus</h2>
               <p style="color: #a0a0a0; font-size: 14px;">Your verification code is:</p>
@@ -50,13 +46,13 @@ export const sendOTPEmail = async (to: string, otp: string) => {
       });
 
       if (response.ok) {
-        console.log(`✅ [Brevo] OTP sent to ${cleanTo}`);
+        console.log(`✅ [Resend] OTP sent to ${cleanTo}`);
         return;
       }
       const errorData = await response.json();
-      console.error("❌ Brevo send failed:", errorData);
-    } catch (brevoErr: any) {
-      console.error("❌ Brevo request error:", brevoErr.message);
+      console.error("❌ Resend send failed:", errorData);
+    } catch (resendErr: any) {
+      console.error("❌ Resend request error:", resendErr.message);
     }
   }
 
